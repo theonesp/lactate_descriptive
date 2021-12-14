@@ -1,0 +1,147 @@
+---
+title: "01_dataset_creation"
+author: "Miguel Ángel Armengol"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  html_notebook:
+    code_folding: hide
+    number_sections: yes
+    theme: flatly
+    toc: yes
+    toc_float: yes
+
+knit: (function(inputFile, encoding) { rmarkdown::render(inputFile, encoding = encoding, output_file = paste0(substr(inputFile,1,nchar(inputFile)-4)," ",Sys.Date(),'.html')) })
+---
+
+# Environment
+
+```{r message=FALSE, warning=FALSE}
+library(bigrquery)
+library(summarytools)
+library(readr)
+library(magrittr)
+library(sqldf)
+library(dplyr)
+library(tableone)
+library(kableExtra)
+impute.median <- function(x) replace(x, is.na(x), median(x, na.rm = TRUE))
+options(scipen=999)
+```
+
+
+# Set up BigQuery related functions
+
+This chunks also creates the run_query and get_sql function.
+
+```{r setup, include=FALSE}
+# Updated for our year
+project_id <- "hst-953-2018"
+options(httr_oauth_cache=FALSE)
+# Function that takes in a sql command and runs it on bigquery
+run_query <- function(query){
+  data <- bq_project_query(x=project_id,query=query, use_legacy_sql=FALSE,max_pages = Inf)
+  return(data)
+}
+
+# function for reading sql files
+getSQL <- function(filepath){
+  con = file(filepath, "r")
+  sql.string <- ""
+
+  while (TRUE){
+    line <- readLines(con, n = 1)
+
+    if ( length(line) == 0 ){
+      break
+    }
+
+    line <- gsub("\\t", " ", line)
+
+    if(grepl("--",line) == TRUE){
+      line <- paste(sub("--","/*",line),"*/")
+    }
+
+    sql.string <- paste(sql.string, line)
+  }
+
+  close(con)
+  return(sql.string)
+}
+
+'%!in%' <- function(x,y)!('%in%'(x,y))
+```
+
+# Loading queries and extracting the data
+
+Loads all queries from the sql files in the extraction folder and runs them into RBigQuey to extract the data.
+
+```{r}
+
+apache_aggregated<- run_query(getSQL('sql/apache_aggregated.sql'))
+charlson_score<- run_query(getSQL('sql/charlson_score.sql'))
+demographics<- run_query(getSQL('sql/demographics.sql'))
+lactate_descr<- run_query(getSQL('sql/lactate_descr.sql'))
+lactate_first_elev_to_test_mins<-run_query(getSQL('sql/lactate_first_elev_to_test_mins.sql'))
+
+apache_related<- run_query(getSQL('sql/apache_related.sql'))
+
+# IMPORTANT, ACCORDING TO THE DOCUMMENTATION -1 in Apache score means missing.
+apache_related$predictedHospitalMortality[apache_related$predictedHospitalMortality==(-1)] <- NA
+apache_related$apache_iv[apache_related$apache_iv==(-1)] <- NA
+apache_related$apachescore[apache_related$apachescore==(-1)] <- NA
+
+
+# SOFA related variables
+sofa_cv_day1_to_day4 <- run_query(getSQL("sql/sofa/sofa_cv_day1_to_day4.sql"))
+sofa_renal_day1_to_day4 <- run_query(getSQL("sql/sofa/sofa_renal_day1_to_day4.sql"))
+sofa_respi_day1_to_day4 <- run_query(getSQL("sql/sofa/sofa_respi_day1_to_day4.sql"))
+sofa_3others_day1_to_day4 <- run_query(getSQL("sql/sofa/sofa_3others_day1_to_day4.sql"))
+sofa_total_day1_to_day4 <- sqldf((getSQL("sql/sofa/sofa_total_day1_to_day4.sql")))
+
+```
+
+# Joining all datasets
+
+```{r}
+# We are using a left join to join them
+lactate_df<-Reduce(function(...) merge(..., all.x=TRUE), list(
+   demographics
+  ,apache_aggregated
+  ,apache_related
+  ,charlson_score%>%select(patientunitstayid,final_charlson_score)
+  ,lactate_descr
+  ,lactate_first_elev_to_test_mins
+  ,sofa_total_day1_to_day4
+))
+```
+
+
+# Exclusion criteria 1
+
+Patients with sepsis (not bleeding) 
+
+```{r}
+# we want to include septic patients that are not bleeding.
+
+print('Initial number of patients patients:')
+a<-nrow(lactate_df)
+a
+
+print('Patients <18 excluded:')
+lactate_df%<>%filter(age_fixed>18)
+b<-nrow(lactate_df)
+a-b
+
+print('Final number of patients:')
+nrow(lactate_df)
+```
+
+## Summary of dataset
+
+```{r}
+view(dfSummary(lactate_df%>%filter(apache_agg=='Cardiovascular')))
+view(dfSummary(lactate_df%>%filter(apache_agg=='Infx')))
+view(dfSummary(lactate_df%>%filter(apache_agg=='Neuro')))
+view(dfSummary(lactate_df%>%filter(apache_agg=='Pulmonary')))
+view(dfSummary(lactate_df%>%filter(apache_agg=='Surgical')))
+```
