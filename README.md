@@ -1,2 +1,2 @@
-# lactate_desciptive
-Code Repository for the project lactate_desciptive
+# lactate_descriptive
+Code Repository for the project lactate_descriptive
