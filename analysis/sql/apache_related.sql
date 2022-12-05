@@ -8,7 +8,6 @@
 
 SELECT 
   icustay_detail.patientunitstayid
-, MAX(apachescore) AS apachescore
 , MAX(actualicumortality) AS actualicumortality
 , MAX(unabridgedunitlos) AS unabridgedunitlos
 , MAX(unabridgedhosplos) AS unabridgedhosplos

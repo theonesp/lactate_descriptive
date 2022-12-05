@@ -7,52 +7,34 @@ output:
     theme: united
 ---
 
-# Libs
+# Environment
 
 ```{r}
 library(dplyr)
-library(plotly)
-library(corrplot)
-library(Hmisc)
-library(officer)
-# library(xlsx)
+library(ggplot2)
 ```
 
 
 # Odd Ratio Plots
 
-## Main model
+## Histogram per Apache Group
+
+# Elevated
 
 ```{r}
-#Generate plot of the odds ratio for quartiles of CLI measured against mortality
+lactate_df %>% filter(mins_from_first_elev_to_test<=24*60) %>% 
+filter(apache_strat != 'Not Top5') %>%
+  ggplot(aes(x = mins_from_first_elev_to_test/60)) + 
+  geom_histogram() + 
+  facet_wrap(~apache_strat)
+```
 
-labels<-c('CLI Q2', 'CLI Q3', 'CLI Q4')
-number_of_exposures<-length(labels)+1
+# Severely  Elevated
 
-df <- data.frame(yAxis = 2:number_of_exposures,
-                 boxOdds = OR_table$OR[2:number_of_exposures] ,
-                 boxCILow = OR_table$`2.5 %`[2:number_of_exposures],  
-                 boxCIHigh = OR_table$`97.5 %`[2:number_of_exposures]
-)
-#df <- df[order(df$boxOdds),]
-
-p<-ggplot(df, aes(x = boxOdds
-                  , y = labels
-                  )) + 
-  geom_vline(aes(xintercept = 1), size = .1, linetype = "dashed") + 
-  geom_errorbarh(aes(xmax = boxCIHigh, xmin = boxCILow)
-                 , size = .5
-                 , height = .2
-                 , color = "gray50") +
-  geom_point(size = 2, color = "#2980b9") +
-  #coord_trans(x = scales:::exp_trans(1.01)) +
-  #scale_y_continuous(breaks = c(-1:1),labels = c(-1:1)) +
-  theme_bw()+
-  theme(panel.grid.minor = element_blank()) +
-  ylab("Exposure") +
-  xlab("Odds ratio") +
-  ggtitle("Impact on mortality")
-p<-ggplotly(p)
-p<-ggplotly(p%>%layout(hovermode = 'compare'))
-p
+```{r}
+lactate_df %>% filter(mins_from_first_sev_elev_to_test<=24*60) %>% 
+filter(apache_strat != 'Not Top5') %>%
+  ggplot(aes(x = mins_from_first_sev_elev_to_test/60)) + 
+  geom_histogram() + 
+  facet_wrap(~apache_strat)
 ```
