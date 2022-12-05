@@ -150,7 +150,8 @@ END
   hospitalAdmitSource,
   -- length of hospital stay prior to ICU admission (days)
   basic_demographics.hosp_mortality,
-  CASE WHEN basic_demographics.hosp_mortality = 1 THEN patient.hospitalDischargeOffset ELSE 0 END AS hosp_mortality_offset
+  CASE WHEN basic_demographics.hosp_mortality = 1 THEN patient.hospitalDischargeOffset ELSE 0 END AS hosp_mortality_offset,
+  teachingstatus
 FROM
   demographics
 LEFT JOIN
@@ -165,5 +166,9 @@ LEFT JOIN
   `physionet-data.eicu_crd_derived.basic_demographics` basic_demographics
 ON
   demographics.patientunitstayid = basic_demographics.patientunitstayid
+LEFT JOIN
+  `physionet-data.eicu_crd.hospital`
+USING
+ (hospitalid)
 WHERE
   age_fixed >= 16
