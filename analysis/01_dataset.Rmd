@@ -3,7 +3,7 @@ title: "01_dataset_creation"
 author: "Miguel Ángel Armengol"
 date: '`r format(Sys.Date(), "%B %d, %Y")`'
 output:
-  html_notebook:
+  # html_notebook:
     code_folding: hide
     number_sections: yes
     theme: flatly
@@ -24,6 +24,7 @@ library(sqldf)
 library(dplyr)
 library(tableone)
 library(kableExtra)
+library(diagram)
 impute.median <- function(x) replace(x, is.na(x), median(x, na.rm = TRUE))
 options(scipen=999)
 ```
@@ -79,7 +80,7 @@ Loads all queries from the sql files in the extraction folder and runs them into
 apache_aggregated<- run_query(getSQL('sql/apache_aggregated.sql'))
 charlson_score<- run_query(getSQL('sql/charlson_score.sql'))
 demographics<- run_query(getSQL('sql/demographics.sql'))
-lactate_descr<- run_query(getSQL('sql/lactate_descr.sql'))
+lactate_descr <- run_query(getSQL('sql/lactate_descr.sql'))
 lactate_first_elev_to_test_mins<-run_query(getSQL('sql/lactate_first_elev_to_test_mins.sql'))
 lactate_first_sev_elev_to_test_mins<-run_query(getSQL('sql/lactate_first_sev_elev_to_test_mins.sql'))
 
@@ -90,7 +91,6 @@ apache_related<- run_query(getSQL('sql/apache_related.sql'))
 # IMPORTANT, ACCORDING TO THE DOCUMMENTATION -1 in Apache score means missing.
 apache_related$predictedHospitalMortality[apache_related$predictedHospitalMortality==(-1)] <- NA
 apache_related$apache_iv[apache_related$apache_iv==(-1)] <- NA
-apache_related$apachescore[apache_related$apachescore==(-1)] <- NA
 
 
 # SOFA related variables
@@ -100,6 +100,9 @@ sofa_respi_day1_to_day4 <- run_query(getSQL("sql/sofa/sofa_respi_day1_to_day4.sq
 sofa_3others_day1_to_day4 <- run_query(getSQL("sql/sofa/sofa_3others_day1_to_day4.sql"))
 sofa_total_day1_to_day4 <- sqldf((getSQL("sql/sofa/sofa_total_day1_to_day4.sql")))
 
+#qc data
+qc_labs<- run_query(getSQL('sql/qc/qc_labs.sql'))
+lab_data_qc <- run_query(getSQL('sql/qc/lab_data_qc.sql'))
 ```
 
 # Joining all datasets
@@ -116,6 +119,8 @@ lactate_df<-Reduce(function(...) merge(..., all.x=TRUE), list(
   ,lactate_first_sev_elev_to_test_mins
   ,lactate_max_first3days
   ,sofa_total_day1_to_day4
+  ,qc_labs
+  ,lab_data_qc
 ))
 ```
 
@@ -127,32 +132,53 @@ Patients with sepsis (not bleeding)
 # we want to include septic patients that are not bleeding.
 
 print('Initial number of patients:')
-a<-nrow(lactate_df)
+a <- nrow(lactate_df)
 a
 
 print('Patients <18 that are excluded:')
-lactate_df%<>%filter(age_fixed>18)
-b<-nrow(lactate_df)
-a-b
+lactate_df %<>% filter(age_fixed > 18)
+b <- nrow(lactate_df)
+a - b
+
+print('Patients with no Hgb data that are excluded:')
+lactate_df %<>% filter(patientunitstayid %in% lab_data_qc$patientunitstayid)
+c <- nrow(lactate_df)
+b - c
+
+print('Patients with stays shorter than 3 hours that are excluded:')
+lactate_df %<>% filter(icu_los_hours >= 3)
+d <- nrow(lactate_df)
+c - d
 
 print('Patients without a diagnose that are excluded:')
-lactate_df%<>%filter(apacheadmissiondx!="")
-c<-nrow(lactate_df)
-b-c
-
+lactate_df %<>% filter(apacheadmissiondx != "")
+e <- nrow(lactate_df)
+d-e
 #####################################################################################################
 # we are extracting top n apache groups
-topn<-5
-top_apachedxgroup<-tail(names(sort(table(lactate_df$apachedxgroup_mod))), topn) 
+topn <- 5
+top_apachedxgroup <- tail(names(sort(table(lactate_df$apachedxgroup_mod))), topn) 
 
-lactate_df<-lactate_df%>%mutate(apache_strat=if_else(apachedxgroup_mod %in% top_apachedxgroup, apachedxgroup_mod,'Not Top5'))
+lactate_df <- lactate_df %>% mutate(apache_strat = if_else(apachedxgroup_mod %in% top_apachedxgroup, apachedxgroup_mod,'Not Top5'))
 #####################################################################################################
 
 print('Patients not in Top5 Apache groups that are excluded:')
-lactate_df%<>%filter(apache_strat!="Not Top5")
-d<-nrow(lactate_df)
-c-d
+lactate_df %<>% filter(apache_strat != "Not Top5")
+f <- nrow(lactate_df)
+e-f
+
+print('Patients without one lab drawn each day for the first 3 days of admission:')
+lactate_df %<>% filter(atleast_one_lab_drawn_each_day_first_3days == 1 )
+g <- nrow(lactate_df)
+f-g
 
 print('Final number of patients:')
 nrow(lactate_df)
 ```
+
+## Flowchart diagram
+
+```{r}
+
+```
+

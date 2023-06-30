@@ -12,7 +12,6 @@ output:
 ```{r}
 library(tableone)
 library(magrittr)
-library(table1)
 library(kableExtra)
 library(dplyr)
 library(magrittr)
@@ -23,7 +22,7 @@ library(magrittr)
 ## Stratified by top apache groups
 
 ```{r}
-vars_in_table1<-c("age_fixed","gender","HospitalLOS","unitType","hospitalAdmitSource","actualicumortality","unabridgedunitlos","unabridgedhosplos","unabridgedactualventdays","predictedHospitalMortality","apache_iv","final_charlson_score","lactate_fst","lactate_max","lactate_num","lactate_num_first3days","lactate_bin_first3days","lactateredrawn_wt8hrs_bin_first3days","mins_from_first_elev_to_test", "mins_from_first_elev_to_test","lactate_max_first3days_type","apache_strat")
+vars_in_table1<-c("age_fixed","gender","hospital_los_hours","unitType","hospitalAdmitSource","actualicumortality","unabridgedunitlos","unabridgedhosplos","unabridgedactualventdays","predictedHospitalMortality","apache_iv","final_charlson_score","lactate_fst","lactate_max","lactate_num","lactate_num_first3days","lactate_bin_first3days","lactateredrawn_wt8hrs_bin_first3days","mins_from_first_elev_to_test", "mins_from_first_elev_to_test","lactate_max_first3days_type","apache_strat")
 
 table1_dataset<-lactate_df[,vars_in_table1]
 

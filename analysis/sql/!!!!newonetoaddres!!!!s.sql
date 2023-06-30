@@ -13,8 +13,6 @@ WITH
     `physionet-data.eicu_crd_derived.pivoted_lab`
   WHERE
     lactate IS NOT NULL AND lactate > 4
-  AND
-    chartoffset BETWEEN -6*60 AND 3*24*60 -- we only wat to address lactated drawn within the first 3 days  
   ORDER BY
     patientunitstayid,
     chartoffset),

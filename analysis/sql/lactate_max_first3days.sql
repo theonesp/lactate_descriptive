@@ -12,15 +12,16 @@ WITH
     `physionet-data.eicu_crd_derived.pivoted_lab`
   WHERE
     lactate IS NOT NULL
-    AND chartoffset BETWEEN 0 AND 3*24*60 -- (3 days)
+    AND 
+    chartoffset BETWEEN -6*60 AND 3*24*60 -- we only wat to address lactated drawn within the first 3 days
   GROUP BY
     patientunitstayid )
 SELECT
   patientunitstayid,
   CASE
     WHEN lactate_max < 2.5 THEN 'Normal'
-    WHEN lactate_max BETWEEN 2.5 AND 4 THEN 'Elevated'
-    WHEN lactate_max > 4 THEN 'Severely Elecated'
+    WHEN lactate_max >= 2.5 AND lactate_max <= 4 THEN 'Elevated'
+    WHEN lactate_max > 4 THEN 'Severely Elevated'
 END AS lactate_max_first3days_type
 FROM
   lactate_max_first3days

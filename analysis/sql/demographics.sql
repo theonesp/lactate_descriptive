@@ -129,7 +129,8 @@ SELECT
   demographics.age_fixed,
   demographics.gender,
   weight_avg AS weight,
-  (hospitalDischargeOffset - hospitalAdmitOffset) / (60 * 24) AS HospitalLOS,
+  (hospitalDischargeOffset - hospitalAdmitOffset) / (60) AS hospital_los_hours,
+  icu_los_hours,
   height,
   BMI,
   -- categorizes BMI values into categories
