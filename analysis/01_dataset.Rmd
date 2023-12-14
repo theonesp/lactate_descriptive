@@ -124,6 +124,26 @@ lactate_df<-Reduce(function(...) merge(..., all.x=TRUE), list(
 ))
 ```
 
+# Selecting only relevant variables
+
+```{r}
+lactate_df
+```
+
+
+# Imputing missing values
+
+```{r}
+BMI
+body_surface_area
+actualicumortality
+unabridgedactualventdays
+apache_iv
+lactate_fst
+lactate_max
+```
+
+
 # Exclusion criteria 1
 
 Patients with sepsis (not bleeding) 
@@ -172,6 +192,10 @@ lactate_df %<>% filter(atleast_one_lab_drawn_each_day_first_3days == 1 )
 g <- nrow(lactate_df)
 f-g
 
+excluding patients with no mortality
+
+actualicumortality 
+
 print('Final number of patients:')
 nrow(lactate_df)
 ```
@@ -179,6 +203,29 @@ nrow(lactate_df)
 ## Flowchart diagram
 
 ```{r}
+if (!requireNamespace("DiagrammeR", quietly = TRUE)) {
+  install.packages("DiagrammeR")
+}
+library(DiagrammeR)
+
+# Define steps and numbers
+steps <- c("Initial", "Patients <18", "No Hgb data", "Short stays", "No diagnosis", "Top5 Apache", "Not Top5 Apache", "Lab drawn first 3 days", "Final")
+numbers <- c(a, b, c, d, e, f, g, nrow(lactate_df))
+
+# Create a graph
+graph <- create_graph(directed = TRUE)
+
+# Add nodes and edges
+for (i in 1:(length(steps) - 1)) {
+  graph <- add_node(graph, as.character(i), label = steps[i])
+  graph <- add_edge(graph, as.character(i), as.character(i + 1), label = as.character(numbers[i] - numbers[i + 1]))
+}
+
+graph <- add_node(graph, as.character(length(steps)), label = steps[length(steps)])
+
+# Plot the graph
+render_graph(graph)
+
 
 ```
 
