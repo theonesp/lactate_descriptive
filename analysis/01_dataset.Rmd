@@ -27,6 +27,10 @@ library(kableExtra)
 library(diagram)
 impute.median <- function(x) replace(x, is.na(x), median(x, na.rm = TRUE))
 options(scipen=999)
+library(Gmisc, quietly = TRUE)
+library(glue)
+library(grid)
+library(magrittr)
 ```
 
 
@@ -200,32 +204,133 @@ print('Final number of patients:')
 nrow(lactate_df)
 ```
 
-## Flowchart diagram
+# Flowchart diagram
 
 ```{r}
-if (!requireNamespace("DiagrammeR", quietly = TRUE)) {
-  install.packages("DiagrammeR")
+# Initial number of patients
+initial_patients <- boxGrob(width = .175,
+                            glue("Initial number of patients",
+                                 "N = {a}",
+                                 a = txtInt(a),
+                                 .sep = "\n"))
+
+# Patients <18 that are excluded
+patients_below_18 <- boxGrob(width = .175,
+                            glue("Patients <18 excluded",
+                                  "bN = {b}",
+                                  b = txtInt(a - b),
+                                  .sep = "\n"))
+
+# Patients with no Hgb data that are excluded
+patients_no_hgb <- boxGrob(width = .175,
+                            glue("Patients without Hgb data excluded",
+                                "N = {c}",
+                                c = txtInt(b - c),
+                                .sep = "\n"))
+
+# Patients with stays shorter than 3 hours excluded
+patients_short_stays <- boxGrob(width = .175,
+                            glue("Patients short stays excluded",
+                                     "N = {d}",
+                                     d = txtInt(c - d),
+                                     .sep = "\n"))
+
+# Patients without a diagnose that are excluded
+patients_no_diagnose <- boxGrob(width = .175,
+                            glue("Patients without diagnosis excluded",
+                                     "N = {e}",
+                                     e = txtInt(d - e),
+                                     .sep = "\n"))
+
+# Patients not in Top5 Apache groups excluded
+patients_not_top5 <- boxGrob(width = .175,
+                            glue("Patients not in Top5 Apache groups excluded",
+                                  "N = {f}",
+                                  f = txtInt(e - f),
+                                  .sep = "\n"))
+
+# Patients without one lab drawn each day for the first 3 days of admission
+patients_no_lab_drawn <- boxGrob(width = .175,
+                            glue("Patients without labs drawn excluded",
+                                      "N = {g}",
+                                      g = txtInt(f - g),
+                                      .sep = "\n"))
+
+# Final number of patients
+final_patients <- boxGrob(width = .175,
+                            glue("Final number of patients",
+                               "N = {n}",
+                               n = txtInt(nrow(lactate_df)),
+                               .sep = "\n"))
+
+# Create connections
+grid.newpage()
+vert <- spreadVertical(initial_patients,
+                       patients_below_18,
+                       patients_no_hgb,
+                       patients_short_stays,
+                       patients_no_diagnose,
+                       patients_not_top5,
+                       patients_no_lab_drawn,
+                       final_patients)
+
+for (i in 1:(length(vert) - 1)) {
+  connectGrob(vert[[i]], vert[[i + 1]], type = "vert") %>%
+    print
 }
-library(DiagrammeR)
 
-# Define steps and numbers
-steps <- c("Initial", "Patients <18", "No Hgb data", "Short stays", "No diagnosis", "Top5 Apache", "Not Top5 Apache", "Lab drawn first 3 days", "Final")
-numbers <- c(a, b, c, d, e, f, g, nrow(lactate_df))
+# Print boxes
+vert
+```
 
-# Create a graph
-graph <- create_graph(directed = TRUE)
 
-# Add nodes and edges
-for (i in 1:(length(steps) - 1)) {
-  graph <- add_node(graph, as.character(i), label = steps[i])
-  graph <- add_edge(graph, as.character(i), as.character(i + 1), label = as.character(numbers[i] - numbers[i + 1]))
+```{r}
+# Initial number of patients
+initial_patients <- boxGrob(width = .175,
+                            glue("Initial number of patients",
+                                 "N = {a}",
+                                 a = txtInt(a),
+                                 .sep = "\n"))
+# Excluded box
+excluded <- boxGrob(glue("Total Excluded (N = {tot}):",
+                         " - Patients <18 years old: {below_18}",
+                         " - Patients without Hgb data: {no_hgb}",
+                         " - Patients with stays shorter than 3 hours: {short_stays}",
+                         " - Patients without a diagnose available: {no_diagnose}",
+                         " - Patients not within the top5 Apache groups: {not_top5}",
+                         " - Patients without one lab drawn each day for the first 3 days of admission: {no_lab_drawn}",
+                         tot = txtInt(a - nrow(lactate_df)),
+                         below_18 = txtInt(a - b),
+                         no_hgb = txtInt(b-c),
+                         short_stays = txtInt(c-d),
+                         no_diagnose = txtInt(d-e),
+                         not_top5 = txtInt(e - f),
+                         no_lab_drawn = txtInt(f - g),
+                         .sep = "\n"),
+                    just = "left")
+
+
+# Final number of patients
+final_patients <- boxGrob(width = .175,
+                            glue("Final number of patients",
+                               "N = {n}",
+                               n = txtInt(nrow(lactate_df)),
+                               .sep = "\n"))
+
+
+# Create connections
+grid.newpage()
+vert <- spreadVertical(initial_patients,
+                       excluded,  # Include the excluded box here
+                       final_patients)
+
+for (i in 1:(length(vert) - 1)) {
+  connectGrob(vert[[i]], vert[[i + 1]], type = "vert") %>%
+    print
 }
 
-graph <- add_node(graph, as.character(length(steps)), label = steps[length(steps)])
-
-# Plot the graph
-render_graph(graph)
-
+# Print boxes
+vert
 
 ```
 
