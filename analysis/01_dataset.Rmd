@@ -20,7 +20,6 @@ library(bigrquery)
 library(summarytools)
 library(readr)
 library(magrittr)
-library(sqldf)
 library(dplyr)
 library(tableone)
 library(kableExtra)
@@ -31,6 +30,7 @@ library(Gmisc, quietly = TRUE)
 library(glue)
 library(grid)
 library(magrittr)
+library(sqldf)
 ```
 
 
@@ -128,23 +128,17 @@ lactate_df<-Reduce(function(...) merge(..., all.x=TRUE), list(
 ))
 ```
 
-# Selecting only relevant variables
+# Creating/renaming variables
 
 ```{r}
-lactate_df
-```
+# We are extracting top n Apache groups, missing dx is classified as 'Other' so we add an extra one in the top n
+topn <- 5+1
+top_apachedxgroup <- tail(names(sort(table(lactate_df$apachedxgroup_mod))), topn) 
 
+lactate_df <- lactate_df %>% mutate(apache_strat = if_else(apachedxgroup_mod %in% top_apachedxgroup, apachedxgroup_mod,'Not Top5'))
 
-# Imputing missing values
-
-```{r}
-BMI
-body_surface_area
-actualicumortality
-unabridgedactualventdays
-apache_iv
-lactate_fst
-lactate_max
+# Rename gender to sex
+lactate_df %<>% rename(sex = gender)
 ```
 
 
@@ -178,33 +172,27 @@ print('Patients without a diagnose that are excluded:')
 lactate_df %<>% filter(apacheadmissiondx != "")
 e <- nrow(lactate_df)
 d-e
-#####################################################################################################
-# we are extracting top n apache groups
-topn <- 5
-top_apachedxgroup <- tail(names(sort(table(lactate_df$apachedxgroup_mod))), topn) 
-
-lactate_df <- lactate_df %>% mutate(apache_strat = if_else(apachedxgroup_mod %in% top_apachedxgroup, apachedxgroup_mod,'Not Top5'))
-#####################################################################################################
 
 print('Patients not in Top5 Apache groups that are excluded:')
 lactate_df %<>% filter(apache_strat != "Not Top5")
 f <- nrow(lactate_df)
 e-f
 
-print('Patients without one lab drawn each day for the first 3 days of admission:')
+print('Patients without one lab drawn each day for the first 3 days of admission that are excluded:')
 lactate_df %<>% filter(atleast_one_lab_drawn_each_day_first_3days == 1 )
 g <- nrow(lactate_df)
 f-g
 
-excluding patients with no mortality
-
-actualicumortality 
+print('Patients with sex charted as (Empty string) or Unknown that are excluded:')
+lactate_df %<>% filter(sex %in% c("Female", "Male"))
+h <- nrow(lactate_df)
+g-h
 
 print('Final number of patients:')
 nrow(lactate_df)
 ```
 
-# Flowchart diagram
+## Flowchart diagram
 
 ```{r}
 # Initial number of patients
@@ -221,13 +209,15 @@ excluded <- boxGrob(glue("Total Excluded (N = {tot}):",
                          " - Patients without a diagnose available: {no_diagnose}",
                          " - Patients not within the top5 Apache groups: {not_top5}",
                          " - Patients without one lab drawn each day for the first 3 days of admission: {no_lab_drawn}",
+                         " - Patients with sex charted as (Empty string) or Unknown: {gender_excluded}",
                          tot = txtInt(a - nrow(lactate_df)),
                          below_18 = txtInt(a - b),
-                         no_hgb = txtInt(b-c),
-                         short_stays = txtInt(c-d),
-                         no_diagnose = txtInt(d-e),
+                         no_hgb = txtInt(b - c),
+                         short_stays = txtInt(c - d),
+                         no_diagnose = txtInt(d - e),
                          not_top5 = txtInt(e - f),
                          no_lab_drawn = txtInt(f - g),
+                         gender_excluded = txtInt(g-h),
                          .sep = "\n"),
                     just = "left")
 
@@ -253,6 +243,86 @@ for (i in 1:(length(vert) - 1)) {
 
 # Print boxes
 vert
+
+```
+
+# Selecting only relevant variables
+
+```{r}
+lactate_df_selected<-lactate_df%>%
+  select(patientunitstayid,age_fixed, sex, hospital_los_hours, unitType, hospitalAdmitSource,
+         actualicumortality, unabridgedunitlos, unabridgedhosplos, apache_iv,
+         final_charlson_score, lactate_fst, lactate_max, lactate_num,
+         lactate_num_first3days, lactate_bin_first3days,
+         lactateredrawn_wt8hrs_bin_first3days, mins_from_first_elev_to_test,
+         lactate_max_first3days_type, apache_strat)
+```
+
+
+# Imputing missing values
+
+```{r}
+# proper data type
+lactate_df_selected %<>%
+  mutate(across(c(lactate_bin_first3days, lactateredrawn_wt8hrs_bin_first3days, actualicumortality), factor) )
+
+library(dplyr)
+
+# Supongamos que tu dataframe se llama 'lactate_df_selected'
+lactate_df_selected <- lactate_df_selected %>%
+  mutate(actualicumortality = recode_factor(actualicumortality, "ALIVE" = 0, "EXPIRED" = 1))
+
+# Impute missing values for multiple columns with the value 1
+lactate_df_selected %<>% 
+  mutate(
+    actualicumortality = if_else(is.na(actualicumortality), '0',actualicumortality),
+    lactate_bin_first3days = if_else(is.na(lactate_bin_first3days), '0', lactate_bin_first3days),
+    lactateredrawn_wt8hrs_bin_first3days = if_else(is.na(lactateredrawn_wt8hrs_bin_first3days), '0', lactateredrawn_wt8hrs_bin_first3days)
+  )
+
+# Impute missing values using median for selected columns
+lactate_df_selected <- lactate_df_selected %>%
+  mutate(
+    unabridgedunitlos = if_else(is.na(unabridgedunitlos), median(unabridgedunitlos, na.rm = TRUE), unabridgedunitlos),
+    unabridgedhosplos = if_else(is.na(unabridgedhosplos), median(unabridgedhosplos, na.rm = TRUE), unabridgedhosplos),
+    apache_iv = if_else(is.na(apache_iv), median(apache_iv, na.rm = TRUE), apache_iv),
+    lactate_fst = if_else(is.na(lactate_fst), median(lactate_fst, na.rm = TRUE), lactate_fst),
+    lactate_max = if_else(is.na(lactate_max), median(lactate_max, na.rm = TRUE), lactate_max),
+    lactate_num = if_else(is.na(lactate_num), median(lactate_num, na.rm = TRUE), lactate_num),
+    lactate_num_first3days = if_else(is.na(lactate_num_first3days), median(lactate_num_first3days, na.rm = TRUE), lactate_num_first3days)
+  )
+
+# Supongamos que tu dataframe se llama 'lactate_df_selected'
+lactate_df_selected <- lactate_df_selected %>%
+  mutate(lactate_max_first3days_type = coalesce(lactate_max_first3days_type, "Not available"))
+
+# Explanation: The goal is to create deciles based on calculated hours and represent the hour range for each decile as a text string.
+
+# Create deciles based on calculated hours
+lactate_df_selected <- lactate_df_selected %>% 
+  mutate(hrs_from_first_elev_to_test = mins_from_first_elev_to_test/60,
+         hrs_from_first_elev_to_test_dec = ntile(hrs_from_first_elev_to_test, 10))
+
+# Create a text string to represent the hour range for each decile
+decile_ranges <- lactate_df_selected %>% 
+  group_by(hrs_from_first_elev_to_test_dec) %>% 
+  summarise(range_text = paste0("[", round(min(hrs_from_first_elev_to_test), 2), ", ", round(max(hrs_from_first_elev_to_test), 2), "]"))
+
+# Convert decile_ranges to a data frame and adjust column types
+decile_ranges <- as.data.frame(decile_ranges)
+decile_ranges$hrs_from_first_elev_to_test_dec <- as.character(decile_ranges$hrs_from_first_elev_to_test_dec)
+
+# Replace the 11th row with 'Not Available' in both columns
+decile_ranges[11, ] <- list('Not Available', 'Not Available')
+
+# Convert the column to characters and replace NAs with the string "Not Available" in lactate_df_selected
+lactate_df_selected$hrs_from_first_elev_to_test_dec <- as.character(lactate_df_selected$hrs_from_first_elev_to_test_dec)
+lactate_df_selected$hrs_from_first_elev_to_test_dec <- ifelse(is.na(lactate_df_selected$hrs_from_first_elev_to_test_dec), "Not Available", lactate_df_selected$hrs_from_first_elev_to_test_dec)
+
+# Redefine decile labels with the created ranges
+lactate_df_selected$hrs_from_first_elev_to_test_dec <- factor(lactate_df_selected$hrs_from_first_elev_to_test_dec, 
+                                                          levels = decile_ranges$hrs_from_first_elev_to_test_dec, 
+                                                          labels = decile_ranges$range_text)
 
 ```
 
