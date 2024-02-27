@@ -52,7 +52,7 @@ WITH
   FROM
     lactate_order
   WHERE
-    chartoffset BETWEEN -6*60 AND 3*24*60 -- we only wat to address lactated drawn within the first 3 days
+    chartoffset BETWEEN -6*60 AND 3*24*60 -- we only want to address lactate drawn within the first 3 days
   GROUP BY
     patientunitstayid ),
 lactate_order_first3days AS (

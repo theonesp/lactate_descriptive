@@ -81,13 +81,15 @@ getSQL <- function(filepath){
 Loads all queries from the sql files in the extraction folder and runs them into RBigQuey to extract the data.
 
 ```{r}
+demographics<- run_query(getSQL('sql/demographics.sql'))
 apache_aggregated<- run_query(getSQL('sql/apache_aggregated.sql'))
 charlson_score<- run_query(getSQL('sql/charlson_score.sql'))
-demographics<- run_query(getSQL('sql/demographics.sql'))
+
+
+#lactate related
 lactate_descr <- run_query(getSQL('sql/lactate_descr.sql'))
 lactate_first_elev_to_test_mins<-run_query(getSQL('sql/lactate_first_elev_to_test_mins.sql'))
 lactate_first_sev_elev_to_test_mins<-run_query(getSQL('sql/lactate_first_sev_elev_to_test_mins.sql'))
-
 lactate_max_first3days<-run_query(getSQL('sql/lactate_max_first3days.sql'))
 
 apache_related<- run_query(getSQL('sql/apache_related.sql'))
@@ -97,7 +99,7 @@ apache_related$predictedHospitalMortality[apache_related$predictedHospitalMortal
 apache_related$apache_iv[apache_related$apache_iv==(-1)] <- NA
 
 
-# SOFA related variables
+# SOFA related dataframes
 sofa_cv_day1_to_day4 <- run_query(getSQL("sql/sofa/sofa_cv_day1_to_day4.sql"))
 sofa_renal_day1_to_day4 <- run_query(getSQL("sql/sofa/sofa_renal_day1_to_day4.sql"))
 sofa_respi_day1_to_day4 <- run_query(getSQL("sql/sofa/sofa_respi_day1_to_day4.sql"))
@@ -255,7 +257,7 @@ lactate_df_selected<-lactate_df%>%
          final_charlson_score, lactate_fst, lactate_max, lactate_num,
          lactate_num_first3days, lactate_bin_first3days,
          lactateredrawn_wt8hrs_bin_first3days, mins_from_first_elev_to_test,
-         lactate_max_first3days_type, apache_strat)
+         lactate_max_first3days_type, apache_strat, sofatotal_day1, teachingstatus, region)
 ```
 
 
@@ -323,6 +325,10 @@ lactate_df_selected$hrs_from_first_elev_to_test_dec <- ifelse(is.na(lactate_df_s
 lactate_df_selected$hrs_from_first_elev_to_test_dec <- factor(lactate_df_selected$hrs_from_first_elev_to_test_dec, 
                                                           levels = decile_ranges$hrs_from_first_elev_to_test_dec, 
                                                           labels = decile_ranges$range_text)
+
+# Imputing missing Hospital Region
+lactate_df_selected$region <- ifelse(is.na(lactate_df_selected$region), 'Not Available', lactate_df_selected$region)
+
 
 ```
 

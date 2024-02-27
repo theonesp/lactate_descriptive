@@ -19,22 +19,39 @@ library(magrittr)
 
 # Table 1 
 
-## Stratified by top apache groups
+## Stratified by top apache groups & lactate_max_first3days_type
 
 ```{r}
-vars_in_table1<-c("age_fixed", "sex", "hospital_los_hours", "unitType", "hospitalAdmitSource", "actualicumortality", "unabridgedunitlos", "unabridgedhosplos", "apache_iv", "final_charlson_score", "lactate_fst", "lactate_max", "lactate_num", "lactate_num_first3days", "lactate_bin_first3days", "lactateredrawn_wt8hrs_bin_first3days", "lactate_max_first3days_type", "apache_strat", "hrs_from_first_elev_to_test_dec")
+vars_in_table1<-c("age_fixed", "sex", "hospital_los_hours", "unitType", "hospitalAdmitSource", "actualicumortality", "unabridgedunitlos", "unabridgedhosplos", "apache_iv", "final_charlson_score", "lactate_fst", "lactate_max", "lactate_num", "lactate_num_first3days", "lactate_bin_first3days", "lactateredrawn_wt8hrs_bin_first3days", "lactate_max_first3days_type", "apache_strat", "hrs_from_first_elev_to_test_dec", "sofatotal_day1", "teachingstatus", "region")
 
 table1_dataset<-lactate_df_selected[,vars_in_table1]
 
 
-stratifyby<-'apache_strat'
+stratifyby<-c('lactate_max_first3days_type','apache_strat')
 
 cat_variables<-rep(NA, length(vars_in_table1))
-label(table1_dataset$age_fixed)<-'Age'
-label(table1_dataset$sex)<-'Sex'
-label(table1_dataset$unitType)<-'ICU Type'
-label(table1_dataset$apache_iv)<-'Apache Score'
-label(table1_dataset$final_charlson_score)<-'Charlson Comorbidity Index'
+attr(table1_dataset$age_fixed, 'label') <- 'Age'
+attr(table1_dataset$sex, 'label') <- 'Sex'
+attr(table1_dataset$hospital_los_hours, 'label') <- 'Hospital Length of Stay (Hours)'
+attr(table1_dataset$unitType, 'label') <- 'Unit Type'
+attr(table1_dataset$hospitalAdmitSource, 'label') <- 'Hospital Admission Source'
+attr(table1_dataset$actualicumortality, 'label') <- 'ICU Mortality'
+attr(table1_dataset$unabridgedunitlos, 'label') <- 'Unit Length of Stay'
+attr(table1_dataset$unabridgedhosplos, 'label') <- 'Hospital Length of Stay'
+attr(table1_dataset$apache_iv, 'label') <- 'APACHE IV'
+attr(table1_dataset$final_charlson_score, 'label') <- 'Final Charlson Score'
+attr(table1_dataset$lactate_fst, 'label') <- 'Lactate First Measurement'
+attr(table1_dataset$lactate_max, 'label') <- 'Maximum Lactate'
+attr(table1_dataset$lactate_num, 'label') <- 'Number of Lactate Measurements'
+attr(table1_dataset$lactate_num_first3days, 'label') <- 'Number of Lactate Measurements in the first 3 Days'
+attr(table1_dataset$lactate_bin_first3days, 'label') <- 'Any lactate available in the first 3 Days'
+attr(table1_dataset$lactateredrawn_wt8hrs_bin_first3days, 'label') <- 'Any Lactate Redrawn within 8 Hours in the first 3 Days'
+attr(table1_dataset$lactate_max_first3days_type, 'label') <- 'Maximum Lactate Type in the first Days'
+attr(table1_dataset$apache_strat, 'label') <- 'APACHE Stratification'
+attr(table1_dataset$hrs_from_first_elev_to_test_dec, 'label') <- 'Decile of Hours from First Elevated Lactate to Test'
+attr(table1_dataset$sofatotal_day1, 'label') <- 'SOFA on Day 1'
+attr(table1_dataset$teachingstatus, 'label') <- 'Hospital Teaching Status'
+attr(table1_dataset$region, 'label') <- 'Hospital Region'
 
 
 # detects whether a variable is categorical or not
@@ -49,7 +66,60 @@ for (i in 1:length(vars_in_table1) ) {
   }
 }  
 
-vars_in_table1_nostrat<-c("age_fixed","Sex","HospitalLOS","unitType","hospitalAdmitSource","actualicumortality","unabridgedunitlos","unabridgedhosplos","unabridgedactualventdays","predictedHospitalMortality","apache_iv","final_charlson_score","lactate_fst","lactate_max","lactate_num","lactate_num_first3days","lactate_bin_first3days","lactateredrawn_wt8hrs_bin_first3days","mins_from_first_elev_to_test","lactate_max_first3days_type")
+vars_in_table1_nostrat<-c("age_fixed", "sex", "hospital_los_hours", "unitType", "hospitalAdmitSource", "actualicumortality", "unabridgedunitlos", "unabridgedhosplos", "apache_iv", "final_charlson_score", "lactate_fst", "lactate_max", "lactate_num", "lactate_num_first3days", "lactate_bin_first3days", "lactateredrawn_wt8hrs_bin_first3days", "lactate_max_first3days_type", "apache_strat", "hrs_from_first_elev_to_test_dec", "sofatotal_day1", "teachingstatus", "region")
+
+cat_variables<-cat_variables[!is.na(cat_variables)]
+table1_base<-print(CreateTableOne(vars = vars_in_table1_nostrat
+                                  , strata = stratifyby
+                                  , includeNA = TRUE
+                                  , factorVars = cat_variables
+                                  
+    ,data = table1_dataset, addOverall=T),varLabels = T 
+    ,nonnormal = c('leaking_index'))
+# run this in console for html output, the code below uses kableExtra::
+starification_cats<-n_distinct(table1_dataset[,stratifyby])
+
+table1_base %>%
+  kbl(caption = "Table 1" , align = "c") %>%
+  kable_classic_2(full_width = F, html_font = "Cambria")
+  # add_header_above(c("Top apache groups" = 7 ))
+
+
+```
+
+# Deprecated
+
+## Stratified by top apache groups
+
+```{r}
+vars_in_table1<-c("age_fixed", "sex", "hospital_los_hours", "unitType", "hospitalAdmitSource", "actualicumortality", "unabridgedunitlos", "unabridgedhosplos", "apache_iv", "final_charlson_score", "lactate_fst", "lactate_max", "lactate_num", "lactate_num_first3days", "lactate_bin_first3days", "lactateredrawn_wt8hrs_bin_first3days", "lactate_max_first3days_type", "apache_strat", "hrs_from_first_elev_to_test_dec", "mins_from_first_elev_to_test", "sofa_total_day1")
+
+table1_dataset<-lactate_df_selected[,vars_in_table1]
+
+
+stratifyby<-'apache_strat'
+
+cat_variables<-rep(NA, length(vars_in_table1))
+attr(table1_dataset$age_fixed,'label')<-'Age'
+# label(table1_dataset$sex)<-'Sex'
+# label(table1_dataset$unitType)<-'ICU Type'
+# label(table1_dataset$apache_iv)<-'Apache Score'
+# label(table1_dataset$final_charlson_score)<-'Charlson Comorbidity Index'
+
+
+# detects whether a variable is categorical or not
+cont<-1
+for (i in 1:length(vars_in_table1) ) {
+  if ( n_distinct(table1_dataset[vars_in_table1[i] ])<=10 ) {
+    print(i)
+    print(vars_in_table1[i])
+    print(names(table1_dataset[vars_in_table1[i]]))
+    cat_variables[cont]<-names(table1_dataset[vars_in_table1[i]])
+    cont<-cont+1
+  }
+}  
+
+vars_in_table1_nostrat<-c("age_fixed","sex","hospital_los_hours","unitType","hospitalAdmitSource","actualicumortality","unabridgedunitlos","unabridgedhosplos","unabridgedactualventdays","apache_iv","final_charlson_score","lactate_fst","lactate_max","lactate_num","lactate_num_first3days","lactate_bin_first3days","lactateredrawn_wt8hrs_bin_first3days","mins_from_first_elev_to_test","lactate_max_first3days_type")
 
 cat_variables<-cat_variables[!is.na(cat_variables)]
 table1_base<-print(CreateTableOne(vars = vars_in_table1_nostrat
@@ -66,58 +136,4 @@ table1_base %>%
   add_header_above(c("Top apache groups" = 9 ))
 ```
 
-## Stratified by top apache groups & lactate cat & teachingstatus
 
-```{r}
-vars_in_table1<-c("age_fixed","sex","HospitalLOS","unitType","hospitalAdmitSource","actualicumortality","unabridgedunitlos","unabridgedhosplos","unabridgedactualventdays","predictedHospitalMortality","apache_iv","final_charlson_score","lactate_fst","lactate_max","lactate_num","lactate_num_first3days","lactate_bin_first3days","lactateredrawn_wt8hrs_bin_first3days","mins_from_first_elev_to_test", "mins_from_first_elev_to_test","lactate_max_first3days_type","apache_strat","teachingstatus")
-# we are extracting top n apache groups
-
-
-# apache_cats_array<-unique(lactate_df$apache_strat)
-# # "CardiacArrest" "Sepsis"        "CVA"           "ACS"           "GIBleed"      
-# 
- table1_dataset<-lactate_df[,vars_in_table1]
-# table1_dataset%<>%filter(apache_strat=='GIBleed')
-
-
-stratifyby<-c('lactate_max_first3days_type','apache_strat','teachingstatus')
-
-cat_variables<-rep(NA, length(vars_in_table1))
-label(table1_dataset$age_fixed)<-'Age'
-label(table1_dataset$gender)<-'Sex'
-label(table1_dataset$unitType)<-'ICU Type'
-label(table1_dataset$apache_iv)<-'Apache Score'
-label(table1_dataset$final_charlson_score)<-'Charlson Comorbidity Index'
-
-
-# detects whether a variable is categorical or not
-cont<-1
-for (i in 1:length(vars_in_table1) ) {
-  if ( n_distinct(table1_dataset[vars_in_table1[i] ])<=10 ) {
-    print(i)
-    print(vars_in_table1[i])
-    print(names(table1_dataset[vars_in_table1[i]]))
-    cat_variables[cont]<-names(table1_dataset[vars_in_table1[i]])
-    cont<-cont+1
-  }
-}  
-
-vars_in_table1_nostrat<-c("age_fixed","sex","HospitalLOS","unitType","hospitalAdmitSource","actualicumortality","unabridgedunitlos","unabridgedhosplos","unabridgedactualventdays","predictedHospitalMortality","apache_iv","final_charlson_score","lactate_fst","lactate_max","lactate_num","lactate_num_first3days","lactate_bin_first3days","lactateredrawn_wt8hrs_bin_first3days","mins_from_first_elev_to_test","lactate_max_first3days_type")
-
-cat_variables<-cat_variables[!is.na(cat_variables)]
-table1_base<-print(CreateTableOne(vars = vars_in_table1_nostrat
-                                  , strata = stratifyby
-                                  , factorVars = cat_variables
-                                  
-    ,data = table1_dataset, addOverall=T),varLabels = T
-    ,nonnormal = c('leaking_index'))
-# run this in console for html output, the code below uses kableExtra::
-starification_cats<-n_distinct(table1_dataset[,stratifyby])
-
-table1_base %>%
-  kbl(caption = "Table 1" , align = "c") %>%
-  kable_classic_2(full_width = F, html_font = "Cambria")
-  # add_header_above(c("Top apache groups" = 7 ))
-
-
-```

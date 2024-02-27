@@ -11,14 +11,13 @@ WITH
   FROM
     `physionet-data.eicu_crd_derived.pivoted_lab`
   WHERE
-    lactate IS NOT NULL
-    AND 
     chartoffset BETWEEN -6*60 AND 3*24*60 -- we only wat to address lactated drawn within the first 3 days
   GROUP BY
     patientunitstayid )
 SELECT
   patientunitstayid,
   CASE
+    WHEN lactate_max IS NULL THEN 'Not Available'
     WHEN lactate_max < 2.5 THEN 'Normal'
     WHEN lactate_max >= 2.5 AND lactate_max <= 4 THEN 'Elevated'
     WHEN lactate_max > 4 THEN 'Severely Elevated'

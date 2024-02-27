@@ -23,136 +23,61 @@ library(ranger)
 library(MLmetrics)
 library(doParallel)
 library(xgboost)
+library(broom)
 ```
 
-# Selecting data to model
+# Loggistic regression
 
 ```{r}
-data<-lactate_df%>%select(age_fixed, gender, BMI_group, body_surface_area, unitType, hospitalAdmitSource, hosp_mortality, teachingstatus, unabridgedactualventdays, apache_iv, final_charlson_score, lactate_fst, lactate_max, lactate_num, lactate_num_first3days, lactate_bin_first3days, lactateredrawn_wt8hrs_bin_first3days, mins_from_first_elev_to_test, mins_from_first_sev_elev_to_test, lactate_max_first3days_type, sofatotal_day1, sofatotal_day2, sofatotal_day3, apache_strat)
+# Convert actualicumortality to numeric
+lactate_df_selected$actualicumortality <- as.numeric(lactate_df_selected$actualicumortality)
 
-# handle missing values
-data <- na.omit(data)
+# Fit logistic regression model
+glm_model <- glm(actualicumortality ~ age_fixed + sex + unitType + hospitalAdmitSource + 
+                   apache_iv + final_charlson_score + lactate_fst + 
+                   lactate_max + apache_strat + sofatotal_day1 + teachingstatus + region, 
+                 data = lactate_df_selected, family = binomial)
 
-# convert categorical variables to dummy variables
-data <- dummyVars(~., data = data) %>% predict(data)
+# Extract coefficients and confidence intervals
+coef_data_hosp <- tidy(glm_model) %>%
+  mutate(predictor = ifelse(row_number() == 1, "Intercept", term)) %>%
+  mutate(adverse_protective = ifelse(p.value < 0.05 & estimate > 0, "Adverse",
+                                     ifelse(p.value < 0.05 & estimate < 0, "Protective", "Inconclusive"))) %>%
+  mutate(OR = exp(estimate),
+         OR_lower = exp(estimate - 1.96 * std.error),
+         OR_upper = exp(estimate + 1.96 * std.error))
 
-data<-as.data.frame(data)
-
-# convert hosp_mortality into a factor variable with valid levels
-data$hosp_mortality <- factor(make.names(as.character(data$hosp_mortality)))
-```
-
-# Training
-
-```{r}
-# Set up parallel processing on GPU
-#registerDoParallel(makeCluster(detectCores(), type = "MPI"))
-
-# split the data into training and testing sets
-set.seed(1234)
-trainIndex <- createDataPartition(data$hosp_mortality, p = .8, list = FALSE)
-train <- data[trainIndex,]
-test <- data[-trainIndex,]
-
-# define the cross-validation method
-ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3, classProbs = TRUE, summaryFunction = prSummary, verboseIter = TRUE)
-metrics <- c("Recall")
-
-# train several classification models with hyperparameter tuning
-model1 <- train(hosp_mortality ~ ., data = train, method = "nnet", metric = metrics, trControl = ctrl)
-model2 <- train(hosp_mortality ~ ., data = train, method = "rf", metric = metrics, trControl = ctrl, tuneGrid = expand.grid(mtry = c(2,4,6)))
-model3 <- train(hosp_mortality ~ ., data = train, method = "svmRadial", metric = metrics, trControl = ctrl, tuneLength = 3)
-model4 <- train(hosp_mortality ~ ., data = train, method = "xgbTree", metric = metrics, trControl = ctrl, tuneLength = 3)
-```
-
-# Validation
-
-```{r}
-# get the method from each model
-method1 <- model1$method
-method2 <- model2$method
-method3 <- model3$method
-method4 <- model4$method
-
-# generate predictions on the test set
-pred1 <- predict(model1, newdata = test)
-pred2 <- predict(model2, newdata = test)
-pred3 <- predict(model3, newdata = test)
-pred4 <- predict(model4, newdata = test)
-
-# calculate evaluation metrics using confusionMatrix
-cm1 <- confusionMatrix(test$hosp_mortality, pred1)
-cm2 <- confusionMatrix(test$hosp_mortality, pred2)
-cm3 <- confusionMatrix(test$hosp_mortality, pred3)
-cm4 <- confusionMatrix(test$hosp_mortality, pred4)
-
-
-# get precision, recall, and F1 scores
-precision1 <- cm1$byClass["Precision"]
-precision2 <- cm2$byClass["Precision"]
-precision3 <- cm3$byClass["Precision"]
-precision4 <- cm4$byClass["Precision"]
-
-
-recall1 <- cm1$byClass["Recall"]
-recall2 <- cm2$byClass["Recall"]
-recall3 <- cm3$byClass["Recall"]
-recall4 <- cm4$byClass["Recall"]
-
-
-f1_1 <- cm1$byClass["F1"]
-f1_2 <- cm2$byClass["F1"]
-f1_3 <- cm3$byClass["F1"]
-f1_4 <- cm4$byClass["F1"]
-
-
-results <- data.frame(
-  Model = c("model1", "model2", "model3", "model4"),
-  Method = c(method1, method2, method3, method4),
-  Precision = c(precision1, precision2, precision3, precision4),
-  Recall = c(recall1, recall2, recall3, recall4),
-  F1 = c(f1_1, f1_2, f1_3, f1_4)
-  
-)
-
-# round the precision, recall, and F1 score columns to 2 digits
-results$Precision <- round(results$Precision, 2)
-results$Recall <- round(results$Recall, 2)
-results$F1 <- round(results$F1, 2)
-
-
-results
-```
-
-# Best model vars explainability
-
-```{r}
-
-train$hosp_mortality[is.na(train$hosp_mortality)] <- 0
-
-# convert the training data to matrix format
-train.matrix <- as.matrix(train[, -which(names(train) == "hosp_mortality")])
-
-# recode the label values to be either 0 or 1
-train.label <- ifelse(train$hosp_mortality == "YES", 1, 0)
-
-# set the hyperparameters for the XGBoost model
-params <- list(
-  objective = "binary:logistic",
-  max_depth = 3,
-  eta = 0.1,
-  subsample = 0.8,
-  colsample_bytree = 0.8
-)
-
-# train the XGBoost model
-modelxb <- xgboost(data = train.matrix, label = train.label, params = params, nrounds = 10)
-
-# dump the tree structure as text
-tree_text <- xgb.dump(modelxb, with_stats = TRUE)
-
-# print the tree structure as a tree
-cat(xgb.dump.to.graph(tree_text))
+# Set up the forest plot using ggplot2
+ggplot(coef_data_hosp, aes(x = OR, xmin = OR_lower, xmax = OR_upper, y = predictor)) +
+  geom_point(size = 2, aes(color = adverse_protective)) +
+  geom_errorbarh(height = 0.2, aes(color = adverse_protective)) +
+  geom_vline(xintercept = 1, linetype = "dashed") +
+  labs(
+    x = "Odds Ratio", 
+    # y = "Predictor",
+    y = "",
+    title = "Odds Ratios and Confidence Intervals\nfor Hospital Admission-Associated Factors"
+  ) +
+  theme_minimal() +
+  scale_color_manual(
+    values = c("#c0392b", "#27ae60", "gray70"),
+    # breaks = c("#c0392b", "#27ae60", "gray90"),
+    labels = c("Adverse", "Protective", "Inconclusive"),
+    name = "Effect on Outcome:"
+  ) +
+  scale_x_continuous(limits = c(0, 5)) +
+  theme(
+    # plot.background = element_rect(fill = "white"),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    plot.title = element_text(hjust = 0.5),
+    axis.line.x = element_line(linewidth = 0.6),
+    axis.ticks = element_blank(),
+    axis.text.x = element_text(color = "#2c3e50"),
+    axis.text.y = element_text(color = "#2c3e50"),
+    legend.position = "top"
+  )
 
 ```
+
 

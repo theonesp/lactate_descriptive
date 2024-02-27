@@ -152,7 +152,8 @@ END
   -- length of hospital stay prior to ICU admission (days)
   basic_demographics.hosp_mortality,
   CASE WHEN basic_demographics.hosp_mortality = 1 THEN patient.hospitalDischargeOffset ELSE 0 END AS hosp_mortality_offset,
-  teachingstatus
+  teachingstatus,
+  region
 FROM
   demographics
 LEFT JOIN
