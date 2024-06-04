@@ -287,16 +287,8 @@ lactate_df_selected <- lactate_df_selected %>%
   mutate(
     unabridgedunitlos = if_else(is.na(unabridgedunitlos), median(unabridgedunitlos, na.rm = TRUE), unabridgedunitlos),
     unabridgedhosplos = if_else(is.na(unabridgedhosplos), median(unabridgedhosplos, na.rm = TRUE), unabridgedhosplos),
-    apache_iv = if_else(is.na(apache_iv), median(apache_iv, na.rm = TRUE), apache_iv),
-    lactate_fst = if_else(is.na(lactate_fst), median(lactate_fst, na.rm = TRUE), lactate_fst),
-    lactate_max = if_else(is.na(lactate_max), median(lactate_max, na.rm = TRUE), lactate_max),
-    lactate_num = if_else(is.na(lactate_num), median(lactate_num, na.rm = TRUE), lactate_num),
-    lactate_num_first3days = if_else(is.na(lactate_num_first3days), median(lactate_num_first3days, na.rm = TRUE), lactate_num_first3days)
+    apache_iv = if_else(is.na(apache_iv), median(apache_iv, na.rm = TRUE), apache_iv)
   )
-
-# Supongamos que tu dataframe se llama 'lactate_df_selected'
-lactate_df_selected <- lactate_df_selected %>%
-  mutate(lactate_max_first3days_type = coalesce(lactate_max_first3days_type, "Not available"))
 
 # Explanation: The goal is to create deciles based on calculated hours and represent the hour range for each decile as a text string.
 
@@ -308,7 +300,8 @@ lactate_df_selected <- lactate_df_selected %>%
 # Create a text string to represent the hour range for each decile
 decile_ranges <- lactate_df_selected %>% 
   group_by(hrs_from_first_elev_to_test_dec) %>% 
-  summarise(range_text = paste0("[", round(min(hrs_from_first_elev_to_test), 2), ", ", round(max(hrs_from_first_elev_to_test), 2), "]"))
+  summarise(range_text = paste0("[", round(min(hrs_from_first_elev_to_test), 2), ", ",
+                                round(max(hrs_from_first_elev_to_test), 2), "]"))
 
 # Convert decile_ranges to a data frame and adjust column types
 decile_ranges <- as.data.frame(decile_ranges)
@@ -319,7 +312,6 @@ decile_ranges[11, ] <- list('Not Available', 'Not Available')
 
 # Convert the column to characters and replace NAs with the string "Not Available" in lactate_df_selected
 lactate_df_selected$hrs_from_first_elev_to_test_dec <- as.character(lactate_df_selected$hrs_from_first_elev_to_test_dec)
-lactate_df_selected$hrs_from_first_elev_to_test_dec <- ifelse(is.na(lactate_df_selected$hrs_from_first_elev_to_test_dec), "Not Available", lactate_df_selected$hrs_from_first_elev_to_test_dec)
 
 # Redefine decile labels with the created ranges
 lactate_df_selected$hrs_from_first_elev_to_test_dec <- factor(lactate_df_selected$hrs_from_first_elev_to_test_dec, 
@@ -329,6 +321,21 @@ lactate_df_selected$hrs_from_first_elev_to_test_dec <- factor(lactate_df_selecte
 # Imputing missing Hospital Region
 lactate_df_selected$region <- ifelse(is.na(lactate_df_selected$region), 'Not Available', lactate_df_selected$region)
 
-
+lactate_df_selected_withmissinig<-lactate_df_selected
 ```
+
+## Lactate related imputation
+
+```{r}
+# Supongamos que tu dataframe se llama 'lactate_df_selected'
+lactate_df_selected <- lactate_df_selected %>%
+  mutate(lactate_max_first3days_type = coalesce(lactate_max_first3days_type, "Not available"),
+         lactate_fst = if_else(is.na(lactate_fst), median(lactate_fst, na.rm = TRUE), lactate_fst),
+         lactate_max = if_else(is.na(lactate_max), median(lactate_max, na.rm = TRUE), lactate_max),
+         lactate_num = if_else(is.na(lactate_num), median(lactate_num, na.rm = TRUE), lactate_num),
+         lactate_num_first3days = if_else(is.na(lactate_num_first3days), median(lactate_num_first3days, na.rm = TRUE), lactate_num_first3days))
+
+lactate_df_selected$hrs_from_first_elev_to_test_dec <- ifelse(is.na(lactate_df_selected$hrs_from_first_elev_to_test_dec), "Not Available", lactate_df_selected$hrs_from_first_elev_to_test_dec)
+```
+
 
