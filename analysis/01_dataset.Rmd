@@ -34,7 +34,7 @@ library(sqldf)
 ```
 
 
-# Set up BigQuery related functions
+# BigQuery Set up 
 
 This chunks also creates the run_query and get_sql function.
 
@@ -76,7 +76,7 @@ getSQL <- function(filepath){
 '%!in%' <- function(x,y)!('%in%'(x,y))
 ```
 
-# Extracting data
+# Data Extraction via SQL
 
 Loads all queries from the sql files in the extraction folder and runs them into RBigQuey to extract the data.
 
@@ -144,7 +144,7 @@ lactate_df %<>% rename(sex = gender)
 ```
 
 
-# Exclusion criteria 1
+# Exclusion criteria
 
 Patients with sepsis (not bleeding) 
 
@@ -160,35 +160,30 @@ lactate_df %<>% filter(age_fixed > 18)
 b <- nrow(lactate_df)
 a - b
 
-print('Patients with no Hgb data that are excluded:')
-lactate_df %<>% filter(patientunitstayid %in% lab_data_qc$patientunitstayid)
+print('Patients with stays shorter than 3 hours that are excluded:')
+lactate_df %<>% filter(icu_los_hours >= 3)
 c <- nrow(lactate_df)
 b - c
 
-print('Patients with stays shorter than 3 hours that are excluded:')
-lactate_df %<>% filter(icu_los_hours >= 3)
+print('Patients without a diagnose that are excluded:')
+lactate_df %<>% filter(apacheadmissiondx != "")
 d <- nrow(lactate_df)
 c - d
 
-print('Patients without a diagnose that are excluded:')
-lactate_df %<>% filter(apacheadmissiondx != "")
-e <- nrow(lactate_df)
-d-e
-
 print('Patients not in Top5 Apache groups that are excluded:')
 lactate_df %<>% filter(apache_strat != "Not Top5")
-f <- nrow(lactate_df)
-e-f
+e <- nrow(lactate_df)
+d - e
 
 print('Patients without one lab drawn each day for the first 3 days of admission that are excluded:')
 lactate_df %<>% filter(atleast_one_lab_drawn_each_day_first_3days == 1 )
-g <- nrow(lactate_df)
-f-g
+f <- nrow(lactate_df)
+e - f
 
 print('Patients with sex charted as (Empty string) or Unknown that are excluded:')
 lactate_df %<>% filter(sex %in% c("Female", "Male"))
-h <- nrow(lactate_df)
-g-h
+g <- nrow(lactate_df)
+f - g
 
 print('Final number of patients:')
 nrow(lactate_df)
@@ -263,6 +258,8 @@ lactate_df_selected<-lactate_df%>%
 
 # Imputing missing values
 
+## Overall variables
+
 ```{r}
 # proper data type
 lactate_df_selected %<>%
@@ -324,7 +321,7 @@ lactate_df_selected$region <- ifelse(is.na(lactate_df_selected$region), 'Not Ava
 lactate_df_selected_withmissinig<-lactate_df_selected
 ```
 
-## Lactate related imputation
+## Lactate related variables
 
 ```{r}
 # Supongamos que tu dataframe se llama 'lactate_df_selected'
