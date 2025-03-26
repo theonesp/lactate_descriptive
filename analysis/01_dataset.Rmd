@@ -256,6 +256,13 @@ lactate_df_selected<-lactate_df%>%
 ```
 
 
+# Variables Casting
+
+```{r}
+lactate_df_selected$teachingstatus <- as.integer(lactate_df_selected$teachingstatus)
+```
+
+
 # Imputing missing values
 
 ## Overall variables

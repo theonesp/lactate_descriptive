@@ -17,67 +17,275 @@ knit: (function(inputFile, encoding) { rmarkdown::render(inputFile, encoding = e
 # Environment
 
 ```{r message=FALSE, warning=FALSE}
-library(dplyr)
-library(caret)
-library(ranger)
-library(MLmetrics)
-library(doParallel)
+library(tidymodels)
 library(xgboost)
-library(broom)
+library(ranger)
+library(glmnet)
+library(dplyr)
+library(boot)
+library(purrr)
 ```
 
-# Loggistic regression
+# Subset de variables del modelo original
 
 ```{r}
-# Convert actualicumortality to numeric
-lactate_df_selected$actualicumortality <- as.numeric(lactate_df_selected$actualicumortality)
-
-# Fit logistic regression model
-glm_model <- glm(actualicumortality ~ age_fixed + sex + unitType + hospitalAdmitSource + 
-                   apache_iv + final_charlson_score + lactate_fst + 
-                   lactate_max + apache_strat + sofatotal_day1 + teachingstatus + region, 
-                 data = lactate_df_selected, family = binomial)
-
-# Extract coefficients and confidence intervals
-coef_data_hosp <- tidy(glm_model) %>%
-  mutate(predictor = ifelse(row_number() == 1, "Intercept", term)) %>%
-  mutate(adverse_protective = ifelse(p.value < 0.05 & estimate > 0, "Adverse",
-                                     ifelse(p.value < 0.05 & estimate < 0, "Protective", "Inconclusive"))) %>%
-  mutate(OR = exp(estimate),
-         OR_lower = exp(estimate - 1.96 * std.error),
-         OR_upper = exp(estimate + 1.96 * std.error))
-
-# Set up the forest plot using ggplot2
-ggplot(coef_data_hosp, aes(x = OR, xmin = OR_lower, xmax = OR_upper, y = predictor)) +
-  geom_point(size = 2, aes(color = adverse_protective)) +
-  geom_errorbarh(height = 0.2, aes(color = adverse_protective)) +
-  geom_vline(xintercept = 1, linetype = "dashed") +
-  labs(
-    x = "Odds Ratio", 
-    # y = "Predictor",
-    y = "",
-    title = "Odds Ratios and Confidence Intervals\nfor Hospital Admission-Associated Factors"
-  ) +
-  theme_minimal() +
-  scale_color_manual(
-    values = c("#c0392b", "#27ae60", "gray70"),
-    # breaks = c("#c0392b", "#27ae60", "gray90"),
-    labels = c("Adverse", "Protective", "Inconclusive"),
-    name = "Effect on Outcome:"
-  ) +
-  scale_x_continuous(limits = c(0, 5)) +
-  theme(
-    # plot.background = element_rect(fill = "white"),
-    panel.grid.major.y = element_blank(),
-    panel.grid.minor.y = element_blank(),
-    plot.title = element_text(hjust = 0.5),
-    axis.line.x = element_line(linewidth = 0.6),
-    axis.ticks = element_blank(),
-    axis.text.x = element_text(color = "#2c3e50"),
-    axis.text.y = element_text(color = "#2c3e50"),
-    legend.position = "top"
-  )
-
+df <- lactate_df_selected %>%
+  select(actualicumortality, age_fixed, sex, unitType, hospitalAdmitSource,
+         apache_iv, final_charlson_score, lactate_fst, lactate_max,
+         apache_strat, sofatotal_day1, teachingstatus, region) %>%
+  mutate(actualicumortality = as.factor(actualicumortality)) %>%
+  mutate(across(where(is.character), as.factor))
 ```
 
+
+# Benchmarking for the general model
+
+```{r}
+# Usar v-fold en vez de bootstrap
+set.seed(123)
+folds <- vfold_cv(df, v = 10, strata = actualicumortality)
+
+# Mantener 5 combinaciones de hiperparámetros
+set.seed(234)
+param_grid <- grid_random(
+  hardhat::extract_parameter_set_dials(wf),
+  size = 5
+)
+
+# Entrenamiento con validación cruzada más rápida
+set.seed(999)
+tuned_xgb <- tune_grid(
+  wf,
+  resamples = folds,
+  grid = param_grid,
+  metrics = metric_set(f_meas),
+  control = control_grid(save_pred = TRUE)
+)
+
+# Extraer F1 y su IC 95% (v-fold, así que IC es menos exacto que bootstrap)
+f_vals <- tuned_xgb$.metrics %>%
+  filter(.metric == "f_meas") %>%
+  pull(.estimate)
+
+f1_result <- tibble(
+  model = "xgboost",
+  f1_mean = mean(f_vals),
+  f1_low = quantile(f_vals, 0.025),
+  f1_high = quantile(f_vals, 0.975)
+)
+
+print(f1_result)
+```
+
+
+
+
+
+
+
+```{r}
+library(tidymodels)
+library(dplyr)
+library(purrr)
+library(broom)
+
+# Variables a usar
+vars_used <- c("actualicumortality", "age_fixed", "sex", "unitType", "hospitalAdmitSource",
+               "apache_iv", "final_charlson_score", 
+               "lactate_max","apache_strat", "sofatotal_day1", "teachingstatus", "region")
+
+df <- lactate_df_selected %>%
+  select(all_of(vars_used)) %>%
+  mutate(across(where(is.character), as.factor)) %>%
+  mutate(actualicumortality = as.factor(actualicumortality))
+
+# División 80/20
+set.seed(123)
+split <- initial_split(df, prop = 0.8, strata = actualicumortality)
+train_df <- training(split)
+test_df <- testing(split)
+
+# Recipe común
+base_rec <- recipe(actualicumortality ~ ., data = train_df) %>%
+  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
+  step_zv(all_predictors())
+
+# Modelo GLM
+glm_spec <- logistic_reg() %>%
+  set_engine("glm") %>%
+  set_mode("classification")
+
+# ---- 1. Modelo general con train
+glm_full_fit <- workflow() %>%
+  add_recipe(base_rec) %>%
+  add_model(glm_spec) %>%
+  fit(data = train_df)
+
+# Predicciones y F1 en test
+pred_full <- predict(glm_full_fit, new_data = test_df, type = "class") %>%
+  bind_cols(truth = test_df$actualicumortality)
+
+f1_full <- f_meas(pred_full, truth = truth, estimate = .pred_class)
+
+# ---- 2. Modelos por grupo apache_strat
+categories <- c("ACS", "CardiacArrest", "CVA", "GIBleed", "Sepsis")
+
+glm_group_models <- map(categories, function(cat) {
+  train_sub <- train_df %>% filter(apache_strat == cat)
+  
+  wf <- workflow() %>%
+    add_recipe(base_rec) %>%
+    add_model(glm_spec) %>%
+    fit(data = train_sub)
+  
+  return(wf)
+})
+
+names(glm_group_models) <- categories
+
+# ---- 3. Extraer resumen de coeficientes
+extract_coefs <- function(model, label) {
+  tidy(model) %>%
+    mutate(model_group = label)
+}
+
+coefs_all <- bind_rows(
+  extract_coefs(glm_full_fit, "General"),
+  map2_dfr(glm_group_models, categories, extract_coefs)
+)
+
+# ---- 4. Evaluación F1 por grupo
+f1_by_group <- map_dfr(categories, function(cat) {
+  model <- glm_group_models[[cat]]
+  test_sub <- test_df %>% filter(apache_strat == cat)
+  
+  if (nrow(test_sub) > 5) {  # Evita evaluar grupos con pocos datos
+    preds <- predict(model, new_data = test_sub, type = "class") %>%
+      bind_cols(truth = test_sub$actualicumortality)
+    
+    f1 <- f_meas(preds, truth = truth, estimate = .pred_class)
+    tibble(model = cat, f1 = f1$.estimate)
+  } else {
+    tibble(model = cat, f1 = NA_real_)
+  }
+})
+
+f1_all <- bind_rows(
+  tibble(model = "General", f1 = f1_full$.estimate),
+  f1_by_group
+)
+
+# Resultados
+print(coefs_all)
+print(f1_all)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+library(tidymodels)
+library(dplyr)
+library(purrr)
+library(broom)
+
+# Variables a usar
+vars_used <- c("actualicumortality", "age_fixed", "sex", "unitType", "hospitalAdmitSource",
+               "apache_iv", "final_charlson_score", "lactate_fst", "lactate_max",
+               "apache_strat", "sofatotal_day1", "teachingstatus", "region")
+
+df <- lactate_df_selected %>%
+  select(all_of(vars_used)) %>%
+  mutate(across(where(is.character), as.factor)) %>%
+  mutate(actualicumortality = as.factor(actualicumortality))
+
+# Recipe común
+base_rec <- recipe(actualicumortality ~ ., data = df) %>%
+  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
+  step_zv(all_predictors())
+
+# Modelo GLM
+glm_spec <- logistic_reg() %>%
+  set_engine("glm") %>%
+  set_mode("classification")
+
+# ---- 1. Modelo general con todo el dataset
+glm_full_fit <- workflow() %>%
+  add_recipe(base_rec) %>%
+  add_model(glm_spec) %>%
+  fit(data = df)
+
+# ---- 2. Modelos por grupo apache_strat
+# Filtrar por cada categoría y ajustar el modelo con mismo recipe
+categories <- c("ACS", "CardiacArrest", "CVA", "GIBleed", "Sepsis")
+
+glm_group_models <- map(categories, function(cat) {
+  df_sub <- df %>% filter(apache_strat == cat)
+  
+  wf <- workflow() %>%
+    add_recipe(base_rec) %>%
+    add_model(glm_spec) %>%
+    fit(data = df_sub)
+  
+  return(wf)
+})
+
+names(glm_group_models) <- categories
+
+# ---- 3. Extraer resumen de coeficientes
+extract_coefs <- function(model, label) {
+  tidy(model) %>%
+    mutate(model_group = label)
+}
+
+coefs_all <- bind_rows(
+  extract_coefs(glm_full_fit, "General"),
+  map2_dfr(glm_group_models, categories, extract_coefs)
+)
+
+# Mostrar coeficientes
+print(coefs_all)
+
+```
+```{r}
+# General
+pred_full <- predict(glm_full_fit, new_data = df, type = "class") %>%
+  bind_cols(truth = df$actualicumortality)
+
+f1_full <- f_meas(pred_full, truth = truth, estimate = .pred_class)
+
+# Por grupo
+categories <- names(glm_group_models)
+
+f1_by_group <- map_dfr(categories, function(cat) {
+  df_sub <- df %>% filter(apache_strat == cat)
+  model <- glm_group_models[[cat]]
+  
+  preds <- predict(model, new_data = df_sub, type = "class") %>%
+    bind_cols(truth = df_sub$actualicumortality)
+  
+  f1 <- f_meas(preds, truth = truth, estimate = .pred_class)
+  tibble(model = cat, f1 = f1$.estimate)
+})
+
+# Unimos todos los resultados
+f1_all <- bind_rows(
+  tibble(model = "General", f1 = f1_full$.estimate),
+  f1_by_group
+)
+
+print(f1_all)
+```
 
