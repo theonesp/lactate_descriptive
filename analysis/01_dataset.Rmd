@@ -28,9 +28,9 @@ impute.median <- function(x) replace(x, is.na(x), median(x, na.rm = TRUE))
 options(scipen=999)
 library(Gmisc, quietly = TRUE)
 library(glue)
-library(grid)
 library(magrittr)
 library(sqldf)
+library(grid)
 ```
 
 
@@ -146,6 +146,8 @@ lactate_df %<>% rename(sex = gender)
 
 # Exclusion criteria
 
+## Excluding rows
+
 Patients with sepsis (not bleeding) 
 
 ```{r}
@@ -189,58 +191,77 @@ print('Final number of patients:')
 nrow(lactate_df)
 ```
 
-## Flowchart diagram
+## CONSORT diagram
 
 ```{r}
-# Initial number of patients
-initial_patients <- boxGrob(width = .175,
-                            glue("Initial number of patients",
-                                 "N = {a}",
-                                 a = txtInt(a),
-                                 .sep = "\n"))
-# Excluded box
-excluded <- boxGrob(glue("Total Excluded (N = {tot}):",
-                         " - Patients <18 years old: {below_18}",
-                         " - Patients without Hgb data: {no_hgb}",
-                         " - Patients with stays shorter than 3 hours: {short_stays}",
-                         " - Patients without a diagnose available: {no_diagnose}",
-                         " - Patients not within the top5 Apache groups: {not_top5}",
-                         " - Patients without one lab drawn each day for the first 3 days of admission: {no_lab_drawn}",
-                         " - Patients with sex charted as (Empty string) or Unknown: {gender_excluded}",
-                         tot = txtInt(a - nrow(lactate_df)),
-                         below_18 = txtInt(a - b),
-                         no_hgb = txtInt(b - c),
-                         short_stays = txtInt(c - d),
-                         no_diagnose = txtInt(d - e),
-                         not_top5 = txtInt(e - f),
-                         no_lab_drawn = txtInt(f - g),
-                         gender_excluded = txtInt(g-h),
-                         .sep = "\n"),
-                    just = "left")
+# Create boxes with proper sizing
+all_icu <- boxGrob(
+  label = paste("All ICU stays\nN =", txtInt(a)),
+  x = 0.3, y = 0.85,
+  width = 0.25, height = 0.1
+)
 
+excluded_1 <- boxGrob(
+  label = paste("Excluded:\n< 18 yo: N =", txtInt(a - b), 
+                "\nNo Apache diagnosis: N =", txtInt(c - d),
+                "\nNot in top 5 diagnosis\ncategories: N =", txtInt(d - e)),
+  x = 0.75, y = 0.7,
+  width = 0.4, height = 0.15,
+  just = "center"
+)
 
-# Final number of patients
-final_patients <- boxGrob(width = .175,
-                            glue("Final number of patients",
-                               "N = {n}",
-                               n = txtInt(nrow(lactate_df)),
-                               .sep = "\n"))
+adult_top5 <- boxGrob(
+  label = paste("Adult ICU admissions in\ntop 5 diagnosis categories\nN =", txtInt(e)),
+  x = 0.3, y = 0.55,
+  width = 0.35, height = 0.12
+)
 
+excluded_2 <- boxGrob(
+  label = paste("Incomplete data exclusion:\nNo daily labs: N =", txtInt(e - f),
+                "\nNo gender: N =", txtInt(f - g),
+                "\nStays shorter than 3 hours: N =", txtInt(b - c)),
+  x = 0.75, y = 0.4,
+  width = 0.4, height = 0.15,
+  just = "center"
+)
 
-# Create connections
+final_cohort <- boxGrob(
+  label = paste("Final cohort\nN =", txtInt(g)),
+  x = 0.3, y = 0.25,
+  width = 0.25, height = 0.1
+)
+
+# Create the plot
 grid.newpage()
-vert <- spreadVertical(initial_patients,
-                       excluded,  # Include the excluded box here
-                       final_patients)
 
-for (i in 1:(length(vert) - 1)) {
-  connectGrob(vert[[i]], vert[[i + 1]], type = "vert") %>%
-    print
-}
+# Draw all boxes
+grid.draw(all_icu)
+grid.draw(excluded_1)
+grid.draw(adult_top5)
+grid.draw(excluded_2)
+grid.draw(final_cohort)
 
-# Print boxes
-vert
+# Draw vertical arrows (main flow)
+# Arrow from all_icu to adult_top5
+grid.lines(x = c(0.3, 0.3), y = c(0.8, 0.61), 
+           arrow = arrow(length = unit(0.1, "inches")), 
+           gp = gpar(lwd = 1.5))
 
+# Arrow from adult_top5 to final_cohort
+grid.lines(x = c(0.3, 0.3), y = c(0.49, 0.31), 
+           arrow = arrow(length = unit(0.1, "inches")), 
+           gp = gpar(lwd = 1.5))
+
+# Draw horizontal arrows (exclusions pointing from main flow to exclusion boxes)
+# Arrow from main flow to excluded_1 (pointing right)
+grid.lines(x = c(0.3, 0.55), y = c(0.7, 0.7), 
+           arrow = arrow(length = unit(0.08, "inches")), 
+           gp = gpar(lwd = 1))
+
+# Arrow from main flow to excluded_2 (pointing right)
+grid.lines(x = c(0.3, 0.55), y = c(0.4, 0.4), 
+           arrow = arrow(length = unit(0.08, "inches")), 
+           gp = gpar(lwd = 1))
 ```
 
 # Selecting only relevant variables
