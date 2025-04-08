@@ -26,266 +26,275 @@ library(boot)
 library(purrr)
 ```
 
-# Subset de variables del modelo original
+# Full dataset
+
+## Selecting variables of interest
 
 ```{r}
 df <- lactate_df_selected %>%
   select(actualicumortality, age_fixed, sex, unitType, hospitalAdmitSource,
-         apache_iv, final_charlson_score, lactate_fst, lactate_max,
+         apache_iv, final_charlson_score, lactate_max,
          apache_strat, sofatotal_day1, teachingstatus, region) %>%
   mutate(actualicumortality = as.factor(actualicumortality)) %>%
   mutate(across(where(is.character), as.factor))
 ```
 
-
-# Benchmarking for the general model
-
-```{r}
-# Usar v-fold en vez de bootstrap
-set.seed(123)
-folds <- vfold_cv(df, v = 10, strata = actualicumortality)
-
-# Mantener 5 combinaciones de hiperparámetros
-set.seed(234)
-param_grid <- grid_random(
-  hardhat::extract_parameter_set_dials(wf),
-  size = 5
-)
-
-# Entrenamiento con validación cruzada más rápida
-set.seed(999)
-tuned_xgb <- tune_grid(
-  wf,
-  resamples = folds,
-  grid = param_grid,
-  metrics = metric_set(f_meas),
-  control = control_grid(save_pred = TRUE)
-)
-
-# Extraer F1 y su IC 95% (v-fold, así que IC es menos exacto que bootstrap)
-f_vals <- tuned_xgb$.metrics %>%
-  filter(.metric == "f_meas") %>%
-  pull(.estimate)
-
-f1_result <- tibble(
-  model = "xgboost",
-  f1_mean = mean(f_vals),
-  f1_low = quantile(f_vals, 0.025),
-  f1_high = quantile(f_vals, 0.975)
-)
-
-print(f1_result)
-```
-
-
-
-
-
-
+## Training the model
 
 ```{r}
 library(tidymodels)
-library(dplyr)
-library(purrr)
-library(broom)
+library(ggplot2)
+library(boot)
+library(glue)
 
-# Variables a usar
-vars_used <- c("actualicumortality", "age_fixed", "sex", "unitType", "hospitalAdmitSource",
-               "apache_iv", "final_charlson_score", 
-               "lactate_max","apache_strat", "sofatotal_day1", "teachingstatus", "region")
-
-df <- lactate_df_selected %>%
-  select(all_of(vars_used)) %>%
-  mutate(across(where(is.character), as.factor)) %>%
-  mutate(actualicumortality = as.factor(actualicumortality))
-
-# División 80/20
 set.seed(123)
-split <- initial_split(df, prop = 0.8, strata = actualicumortality)
-train_df <- training(split)
-test_df <- testing(split)
 
-# Recipe común
-base_rec <- recipe(actualicumortality ~ ., data = train_df) %>%
-  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
-  step_zv(all_predictors())
+# 1. Split de datos
+data_split <- initial_split(df, prop = 0.8, strata = actualicumortality)
+train_data <- training(data_split)
+test_data  <- testing(data_split)
 
-# Modelo GLM
-glm_spec <- logistic_reg() %>%
-  set_engine("glm") %>%
+# 2. Receta
+receta <- recipe(actualicumortality ~ ., data = train_data) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+# 3. Modelo xgboost
+modelo <- boost_tree(
+  trees = 1000,
+  tree_depth = 6,
+  learn_rate = 0.01
+) %>% 
+  set_engine("xgboost") %>% 
   set_mode("classification")
 
-# ---- 1. Modelo general con train
-glm_full_fit <- workflow() %>%
-  add_recipe(base_rec) %>%
-  add_model(glm_spec) %>%
-  fit(data = train_df)
+# 4. Workflow y entrenamiento
+flujo <- workflow() %>%
+  add_model(modelo) %>%
+  add_recipe(receta)
 
-# Predicciones y F1 en test
-pred_full <- predict(glm_full_fit, new_data = test_df, type = "class") %>%
-  bind_cols(truth = test_df$actualicumortality)
+modelo_final <- fit(flujo, data = train_data)
 
-f1_full <- f_meas(pred_full, truth = truth, estimate = .pred_class)
+# 5. Predicción de probabilidades
+predicciones_prob <- predict(modelo_final, new_data = test_data, type = "prob") %>%
+  bind_cols(test_data %>% select(actualicumortality))
 
-# ---- 2. Modelos por grupo apache_strat
-categories <- c("ACS", "CardiacArrest", "CVA", "GIBleed", "Sepsis")
+# 6. Búsqueda del mejor umbral basado en F1
+umbrales <- seq(0.05, 0.95, by = 0.01)
 
-glm_group_models <- map(categories, function(cat) {
-  train_sub <- train_df %>% filter(apache_strat == cat)
-  
-  wf <- workflow() %>%
-    add_recipe(base_rec) %>%
-    add_model(glm_spec) %>%
-    fit(data = train_sub)
-  
-  return(wf)
-})
-
-names(glm_group_models) <- categories
-
-# ---- 3. Extraer resumen de coeficientes
-extract_coefs <- function(model, label) {
-  tidy(model) %>%
-    mutate(model_group = label)
+calcula_f1 <- function(umbral) {
+  pred_temp <- predicciones_prob %>%
+    mutate(
+      actualicumortality = factor(actualicumortality, levels = levels(test_data$actualicumortality)),
+      .pred_class = factor(if_else(.pred_1 >= umbral, 1, 0),
+                           levels = levels(test_data$actualicumortality))
+    )
+  f_meas_vec(truth = pred_temp$actualicumortality, estimate = pred_temp$.pred_class)
 }
 
-coefs_all <- bind_rows(
-  extract_coefs(glm_full_fit, "General"),
-  map2_dfr(glm_group_models, categories, extract_coefs)
+f1_scores <- map_dbl(umbrales, calcula_f1)
+umbral_optimo <- umbrales[which.max(f1_scores)]
+cat("Umbral óptimo para F1:", umbral_optimo, "\n")
+
+# 7. Predicciones finales con umbral óptimo
+pred_final <- predicciones_prob %>%
+  mutate(
+    actualicumortality = factor(actualicumortality, levels = levels(test_data$actualicumortality)),
+    .pred_class = factor(if_else(.pred_1 >= umbral_optimo, 1, 0),
+                         levels = levels(test_data$actualicumortality))
+  )
+
+# 8. Métricas con umbral óptimo
+metricas_optimas <- bind_rows(
+  accuracy(pred_final, truth = actualicumortality, estimate = .pred_class),
+  precision(pred_final, truth = actualicumortality, estimate = .pred_class),
+  recall(pred_final, truth = actualicumortality, estimate = .pred_class),
+  f_meas(pred_final, truth = actualicumortality, estimate = .pred_class)
 )
 
-# ---- 4. Evaluación F1 por grupo
-f1_by_group <- map_dfr(categories, function(cat) {
-  model <- glm_group_models[[cat]]
-  test_sub <- test_df %>% filter(apache_strat == cat)
+# 9. Matriz de confusión
+autoplot(conf_mat(pred_final, truth = actualicumortality, estimate = .pred_class), type = "heatmap") +
+  scale_fill_gradient(low = "white", high = "red") +
+  theme_minimal() +
+  labs(title = paste("Matriz de Confusión (XGBoost, umbral =", umbral_optimo, ")"), fill = "Count")
+
+# 10. Bootstrap para IC del 95% con umbral óptimo
+bootstrap_metric <- function(data, indices, metric_func, threshold) {
+  d <- as_tibble(data[indices, ])
+  d <- d %>%
+    mutate(actualicumortality = factor(actualicumortality, levels = levels(test_data$actualicumortality)))
+
+  pred <- predict(modelo_final, new_data = d, type = "prob") %>%
+    bind_cols(d %>% select(actualicumortality)) %>%
+    mutate(.pred_class = factor(if_else(.pred_1 >= threshold, 1, 0),
+                                levels = levels(d$actualicumortality)))
+
+  metric_func(truth = pred$actualicumortality, estimate = pred$.pred_class)
+}
+
+set.seed(123)
+n_boot <- 100
+boot_f1 <- boot(data = test_data, statistic = function(d, i) bootstrap_metric(d, i, f_meas_vec, umbral_optimo), R = n_boot)
+boot_precision <- boot(data = test_data, statistic = function(d, i) bootstrap_metric(d, i, precision_vec, umbral_optimo), R = n_boot)
+boot_recall <- boot(data = test_data, statistic = function(d, i) bootstrap_metric(d, i, recall_vec, umbral_optimo), R = n_boot)
+
+ic_f1 <- boot.ci(boot_f1, type = "perc")$percent[4:5]
+ic_precision <- boot.ci(boot_precision, type = "perc")$percent[4:5]
+ic_recall <- boot.ci(boot_recall, type = "perc")$percent[4:5]
+
+# 11. Línea final con métricas y CIs en una sola línea legible
+acc <- metricas_optimas %>% filter(.metric == "accuracy") %>% pull(.estimate)
+prec <- metricas_optimas %>% filter(.metric == "precision") %>% pull(.estimate)
+rec <- metricas_optimas %>% filter(.metric == "recall") %>% pull(.estimate)
+f1 <- metricas_optimas %>% filter(.metric == "f_meas") %>% pull(.estimate)
+
+cat(glue(
+  "Accuracy: {round(acc, 3)} | ",
+  "Precision: {round(prec, 3)} CI [{round(ic_precision[1], 3)}–{round(ic_precision[2], 3)}] | ",
+  "Recall: {round(rec, 3)} CI [{round(ic_recall[1], 3)}–{round(ic_recall[2], 3)}] | ",
+  "F1: {round(f1, 3)} CI [{round(ic_f1[1], 3)}–{round(ic_f1[2], 3)}]\n"
+))
+```
+
+## Explain the model
+
+```{r}
+library(xgboost)
+library(SHAPforxgboost)
+library(workflows)  # por si acaso para extract_fit_parsnip
+
+# Extraer el booster (actual forma recomendada)
+modelo_booster <- extract_fit_parsnip(modelo_final)$fit
+
+# Preparamos la matriz de entrada con las transformaciones de la receta
+bake_test <- bake(prep(receta), new_data = test_data) %>% select(-actualicumortality)
+
+# Calcular SHAP values (esta función sí existe en SHAPforxgboost)
+shap_result <- shap.prep(xgb_model = modelo_booster, X_train = as.matrix(bake_test))
+
+# Mostrar el resumen SHAP plot
+shap.plot.summary(shap_result)
+```
+
+# Subset by apache diagnosis
+
+```{r}
+library(tidymodels)
+library(SHAPforxgboost)
+library(ggplot2)
+library(boot)
+library(dplyr)
+
+if (!exists("df") || !inherits(df, "data.frame")) {
+  stop("❌ 'df' must be a loaded data.frame before running this script.")
+}
+
+groups <- c("ACS", "CardiacArrest", "CVA", "GIBleed", "Sepsis")
+
+for (group in groups) {
+  cat(glue::glue("\n==== Processing group: {group} ====\n"))
   
-  if (nrow(test_sub) > 5) {  # Evita evaluar grupos con pocos datos
-    preds <- predict(model, new_data = test_sub, type = "class") %>%
-      bind_cols(truth = test_sub$actualicumortality)
-    
-    f1 <- f_meas(preds, truth = truth, estimate = .pred_class)
-    tibble(model = cat, f1 = f1$.estimate)
-  } else {
-    tibble(model = cat, f1 = NA_real_)
+  cat("→ Training model...\n")
+  df_sub <- df %>%
+    filter(apache_strat == group) %>%
+    mutate(actualicumortality = factor(actualicumortality, levels = c("0", "1")))
+  
+  split <- initial_split(df_sub, prop = 0.8, strata = actualicumortality)
+  train <- training(split)
+  test  <- testing(split)
+  
+  recipe_obj <- recipe(actualicumortality ~ ., data = train) %>%
+    step_rm(apache_strat) %>%
+    step_dummy(all_nominal_predictors()) %>%
+    step_zv(all_predictors()) %>%
+    step_normalize(all_numeric_predictors())
+  
+  model <- boost_tree(trees = 1000, tree_depth = 6, learn_rate = 0.01) %>%
+    set_engine("xgboost") %>%
+    set_mode("classification")
+  
+  workflow_obj <- workflow() %>%
+    add_model(model) %>%
+    add_recipe(recipe_obj)
+  
+  fitted_model <- fit(workflow_obj, data = train)
+  
+  cat("→ Generating validation metrics...\n")
+  pred_probs <- predict(fitted_model, new_data = test, type = "prob") %>%
+    bind_cols(test %>% select(actualicumortality))
+  
+  thresholds <- seq(0.05, 0.95, by = 0.01)
+  f1_scores <- numeric(length(thresholds))
+  for (i in seq_along(thresholds)) {
+    temp_preds <- pred_probs %>%
+      mutate(
+        .pred_class = factor(if_else(.pred_1 >= thresholds[i], "1", "0"), levels = c("0", "1")),
+        actualicumortality = factor(actualicumortality, levels = c("0", "1"))
+      )
+    f1_scores[i] <- f_meas_vec(truth = temp_preds$actualicumortality, estimate = temp_preds$.pred_class)
   }
-})
-
-f1_all <- bind_rows(
-  tibble(model = "General", f1 = f1_full$.estimate),
-  f1_by_group
-)
-
-# Resultados
-print(coefs_all)
-print(f1_all)
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```{r}
-library(tidymodels)
-library(dplyr)
-library(purrr)
-library(broom)
-
-# Variables a usar
-vars_used <- c("actualicumortality", "age_fixed", "sex", "unitType", "hospitalAdmitSource",
-               "apache_iv", "final_charlson_score", "lactate_fst", "lactate_max",
-               "apache_strat", "sofatotal_day1", "teachingstatus", "region")
-
-df <- lactate_df_selected %>%
-  select(all_of(vars_used)) %>%
-  mutate(across(where(is.character), as.factor)) %>%
-  mutate(actualicumortality = as.factor(actualicumortality))
-
-# Recipe común
-base_rec <- recipe(actualicumortality ~ ., data = df) %>%
-  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
-  step_zv(all_predictors())
-
-# Modelo GLM
-glm_spec <- logistic_reg() %>%
-  set_engine("glm") %>%
-  set_mode("classification")
-
-# ---- 1. Modelo general con todo el dataset
-glm_full_fit <- workflow() %>%
-  add_recipe(base_rec) %>%
-  add_model(glm_spec) %>%
-  fit(data = df)
-
-# ---- 2. Modelos por grupo apache_strat
-# Filtrar por cada categoría y ajustar el modelo con mismo recipe
-categories <- c("ACS", "CardiacArrest", "CVA", "GIBleed", "Sepsis")
-
-glm_group_models <- map(categories, function(cat) {
-  df_sub <- df %>% filter(apache_strat == cat)
+  optimal_threshold <- thresholds[which.max(f1_scores)]
   
-  wf <- workflow() %>%
-    add_recipe(base_rec) %>%
-    add_model(glm_spec) %>%
-    fit(data = df_sub)
+  final_preds <- pred_probs %>%
+    mutate(
+      .pred_class = factor(if_else(.pred_1 >= optimal_threshold, "1", "0"), levels = c("0", "1")),
+      actualicumortality = factor(actualicumortality, levels = c("0", "1"))
+    )
   
-  return(wf)
-})
-
-names(glm_group_models) <- categories
-
-# ---- 3. Extraer resumen de coeficientes
-extract_coefs <- function(model, label) {
-  tidy(model) %>%
-    mutate(model_group = label)
+  f1 <- f_meas(final_preds, truth = actualicumortality, estimate = .pred_class) %>% pull(.estimate)
+  
+  set.seed(123)
+  ci_f1_vals <- tryCatch({
+    boot_f1 <- boot(data = test, statistic = function(data, indices) {
+      d_i <- as_tibble(data[indices, ]) %>%
+        mutate(actualicumortality = factor(actualicumortality, levels = c("0", "1")))
+      probas <- predict(fitted_model, new_data = d_i, type = "prob") %>%
+        bind_cols(d_i %>% select(actualicumortality)) %>%
+        mutate(.pred_class = factor(if_else(.pred_1 >= optimal_threshold, "1", "0"), levels = c("0", "1")))
+      f_meas_vec(truth = probas$actualicumortality, estimate = probas$.pred_class)
+    }, R = 100)
+    ci_f1 <- suppressWarnings(boot.ci(boot_f1, type = "perc"))
+    if (!is.null(ci_f1$percent)) ci_f1$percent[4:5] else c(NA_real_, NA_real_)
+  }, error = function(e) {
+    message(glue::glue("⚠️ Could not compute F1 CI for {group}"))
+    c(NA_real_, NA_real_)
+  })
+  
+  cat("→ Generating SHAP...\n")
+  shap_data <- tryCatch({
+    booster_model <- extract_fit_parsnip(fitted_model)$fit
+    test_matrix <- bake(prep(recipe_obj), new_data = test) %>% select(-actualicumortality)
+    SHAPforxgboost::shap.prep(xgb_model = booster_model, X_train = as.matrix(test_matrix), top_n = 10)
+  }, error = function(e) {
+    message(glue::glue("⚠️ SHAP computation failed for {group}"))
+    NULL
+  })
+  
+  plot_title <- glue::glue("Apache group: {group}\nF1: {round(f1, 3)} CI [{round(ci_f1_vals[1], 3)}–{round(ci_f1_vals[2], 3)}]")
+  
+  p <- tryCatch({
+    if (!is.null(shap_data) && nrow(shap_data) > 0) {
+      shap.plot.summary(shap_data) + ggtitle(plot_title)
+    } else {
+      stop("Empty SHAP data")
+    }
+  }, error = function(e) {
+    ggplot(data.frame(x = 1, y = 1), aes(x, y)) +
+      geom_point(alpha = 0) +
+      annotate("text", x = 1, y = 1, label = glue::glue("{group}\nNo SHAP data"), size = 6) +
+      ggtitle(plot_title) +
+      theme_void()
+  })
+  
+  # Show plot
+  print(p)
+  
+  # Save individual PNG
+  ggsave(filename = glue::glue("shap_group_{group}.png"), plot = p, width = 8, height = 6, dpi = 300)
+  
+  cat(glue::glue("✅ Saved: shap_group_{group}.png\n"))
 }
 
-coefs_all <- bind_rows(
-  extract_coefs(glm_full_fit, "General"),
-  map2_dfr(glm_group_models, categories, extract_coefs)
-)
-
-# Mostrar coeficientes
-print(coefs_all)
-
-```
-```{r}
-# General
-pred_full <- predict(glm_full_fit, new_data = df, type = "class") %>%
-  bind_cols(truth = df$actualicumortality)
-
-f1_full <- f_meas(pred_full, truth = truth, estimate = .pred_class)
-
-# Por grupo
-categories <- names(glm_group_models)
-
-f1_by_group <- map_dfr(categories, function(cat) {
-  df_sub <- df %>% filter(apache_strat == cat)
-  model <- glm_group_models[[cat]]
-  
-  preds <- predict(model, new_data = df_sub, type = "class") %>%
-    bind_cols(truth = df_sub$actualicumortality)
-  
-  f1 <- f_meas(preds, truth = truth, estimate = .pred_class)
-  tibble(model = cat, f1 = f1$.estimate)
-})
-
-# Unimos todos los resultados
-f1_all <- bind_rows(
-  tibble(model = "General", f1 = f1_full$.estimate),
-  f1_by_group
-)
-
-print(f1_all)
 ```
 

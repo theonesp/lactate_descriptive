@@ -146,6 +146,8 @@ lactate_df %<>% rename(sex = gender)
 
 # Exclusion criteria
 
+## Excluding rows
+
 Patients with sepsis (not bleeding) 
 
 ```{r}
@@ -188,7 +190,6 @@ f - g
 print('Final number of patients:')
 nrow(lactate_df)
 ```
-
 ## Flowchart diagram
 
 ```{r}
@@ -198,10 +199,10 @@ initial_patients <- boxGrob(width = .175,
                                  "N = {a}",
                                  a = txtInt(a),
                                  .sep = "\n"))
-# Excluded box
+
+# plot generation
 excluded <- boxGrob(glue("Total Excluded (N = {tot}):",
                          " - Patients <18 years old: {below_18}",
-                         " - Patients without Hgb data: {no_hgb}",
                          " - Patients with stays shorter than 3 hours: {short_stays}",
                          " - Patients without a diagnose available: {no_diagnose}",
                          " - Patients not within the top5 Apache groups: {not_top5}",
@@ -209,12 +210,11 @@ excluded <- boxGrob(glue("Total Excluded (N = {tot}):",
                          " - Patients with sex charted as (Empty string) or Unknown: {gender_excluded}",
                          tot = txtInt(a - nrow(lactate_df)),
                          below_18 = txtInt(a - b),
-                         no_hgb = txtInt(b - c),
-                         short_stays = txtInt(c - d),
-                         no_diagnose = txtInt(d - e),
-                         not_top5 = txtInt(e - f),
-                         no_lab_drawn = txtInt(f - g),
-                         gender_excluded = txtInt(g-h),
+                         short_stays = txtInt(b - c),
+                         no_diagnose = txtInt(c - d),
+                         not_top5 = txtInt(d - e),
+                         no_lab_drawn = txtInt(e - f),
+                         gender_excluded = txtInt(f - g),
                          .sep = "\n"),
                     just = "left")
 
@@ -331,7 +331,6 @@ lactate_df_selected_withmissinig<-lactate_df_selected
 ## Lactate related variables
 
 ```{r}
-# Supongamos que tu dataframe se llama 'lactate_df_selected'
 lactate_df_selected <- lactate_df_selected %>%
   mutate(lactate_max_first3days_type = coalesce(lactate_max_first3days_type, "Not available"),
          lactate_fst = if_else(is.na(lactate_fst), median(lactate_fst, na.rm = TRUE), lactate_fst),
