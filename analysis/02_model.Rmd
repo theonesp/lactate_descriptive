@@ -26,7 +26,9 @@ library(boot)
 library(purrr)
 ```
 
-# Subset de variables del modelo original
+# Full dataset
+
+## Selecting variables of interest
 
 ```{r}
 df <- lactate_df_selected %>%
@@ -37,11 +39,19 @@ df <- lactate_df_selected %>%
   mutate(across(where(is.character), as.factor))
 ```
 
+<<<<<<< HEAD
+=======
+## Training the model
+>>>>>>> 15288707fcca542ba8b129af25222d7e0184fd07
 
 ```{r}
 library(tidymodels)
 library(ggplot2)
 library(boot)
+<<<<<<< HEAD
+=======
+library(glue)
+>>>>>>> 15288707fcca542ba8b129af25222d7e0184fd07
 
 set.seed(123)
 
@@ -61,8 +71,13 @@ modelo <- boost_tree(
   trees = 1000,
   tree_depth = 6,
   learn_rate = 0.01
+<<<<<<< HEAD
 ) %>%
   set_engine("xgboost") %>%
+=======
+) %>% 
+  set_engine("xgboost") %>% 
+>>>>>>> 15288707fcca542ba8b129af25222d7e0184fd07
   set_mode("classification")
 
 # 4. Workflow y entrenamiento
@@ -140,6 +155,7 @@ ic_f1 <- boot.ci(boot_f1, type = "perc")$percent[4:5]
 ic_precision <- boot.ci(boot_precision, type = "perc")$percent[4:5]
 ic_recall <- boot.ci(boot_recall, type = "perc")$percent[4:5]
 
+<<<<<<< HEAD
 ic_df <- tibble(
   metric = c("F1", "Precision", "Recall"),
   IC_95_Lower = c(ic_f1[1], ic_precision[1], ic_recall[1]),
@@ -185,4 +201,160 @@ print(head(shap_df))
 
 ```
 
+=======
+# 11. Línea final con métricas y CIs en una sola línea legible
+acc <- metricas_optimas %>% filter(.metric == "accuracy") %>% pull(.estimate)
+prec <- metricas_optimas %>% filter(.metric == "precision") %>% pull(.estimate)
+rec <- metricas_optimas %>% filter(.metric == "recall") %>% pull(.estimate)
+f1 <- metricas_optimas %>% filter(.metric == "f_meas") %>% pull(.estimate)
+
+cat(glue(
+  "Accuracy: {round(acc, 3)} | ",
+  "Precision: {round(prec, 3)} CI [{round(ic_precision[1], 3)}–{round(ic_precision[2], 3)}] | ",
+  "Recall: {round(rec, 3)} CI [{round(ic_recall[1], 3)}–{round(ic_recall[2], 3)}] | ",
+  "F1: {round(f1, 3)} CI [{round(ic_f1[1], 3)}–{round(ic_f1[2], 3)}]\n"
+))
+```
+
+## Explain the model
+
+```{r}
+library(xgboost)
+library(SHAPforxgboost)
+library(workflows)  # por si acaso para extract_fit_parsnip
+
+# Extraer el booster (actual forma recomendada)
+modelo_booster <- extract_fit_parsnip(modelo_final)$fit
+
+# Preparamos la matriz de entrada con las transformaciones de la receta
+bake_test <- bake(prep(receta), new_data = test_data) %>% select(-actualicumortality)
+
+# Calcular SHAP values (esta función sí existe en SHAPforxgboost)
+shap_result <- shap.prep(xgb_model = modelo_booster, X_train = as.matrix(bake_test))
+
+# Mostrar el resumen SHAP plot
+shap.plot.summary(shap_result)
+```
+
+# Subset by apache diagnosis
+
+```{r}
+library(tidymodels)
+library(SHAPforxgboost)
+library(ggplot2)
+library(boot)
+library(dplyr)
+
+if (!exists("df") || !inherits(df, "data.frame")) {
+  stop("❌ 'df' must be a loaded data.frame before running this script.")
+}
+
+groups <- c("ACS", "CardiacArrest", "CVA", "GIBleed", "Sepsis")
+
+for (group in groups) {
+  cat(glue::glue("\n==== Processing group: {group} ====\n"))
+  
+  cat("→ Training model...\n")
+  df_sub <- df %>%
+    filter(apache_strat == group) %>%
+    mutate(actualicumortality = factor(actualicumortality, levels = c("0", "1")))
+  
+  split <- initial_split(df_sub, prop = 0.8, strata = actualicumortality)
+  train <- training(split)
+  test  <- testing(split)
+  
+  recipe_obj <- recipe(actualicumortality ~ ., data = train) %>%
+    step_rm(apache_strat) %>%
+    step_dummy(all_nominal_predictors()) %>%
+    step_zv(all_predictors()) %>%
+    step_normalize(all_numeric_predictors())
+  
+  model <- boost_tree(trees = 1000, tree_depth = 6, learn_rate = 0.01) %>%
+    set_engine("xgboost") %>%
+    set_mode("classification")
+  
+  workflow_obj <- workflow() %>%
+    add_model(model) %>%
+    add_recipe(recipe_obj)
+  
+  fitted_model <- fit(workflow_obj, data = train)
+  
+  cat("→ Generating validation metrics...\n")
+  pred_probs <- predict(fitted_model, new_data = test, type = "prob") %>%
+    bind_cols(test %>% select(actualicumortality))
+  
+  thresholds <- seq(0.05, 0.95, by = 0.01)
+  f1_scores <- numeric(length(thresholds))
+  for (i in seq_along(thresholds)) {
+    temp_preds <- pred_probs %>%
+      mutate(
+        .pred_class = factor(if_else(.pred_1 >= thresholds[i], "1", "0"), levels = c("0", "1")),
+        actualicumortality = factor(actualicumortality, levels = c("0", "1"))
+      )
+    f1_scores[i] <- f_meas_vec(truth = temp_preds$actualicumortality, estimate = temp_preds$.pred_class)
+  }
+  optimal_threshold <- thresholds[which.max(f1_scores)]
+  
+  final_preds <- pred_probs %>%
+    mutate(
+      .pred_class = factor(if_else(.pred_1 >= optimal_threshold, "1", "0"), levels = c("0", "1")),
+      actualicumortality = factor(actualicumortality, levels = c("0", "1"))
+    )
+  
+  f1 <- f_meas(final_preds, truth = actualicumortality, estimate = .pred_class) %>% pull(.estimate)
+  
+  set.seed(123)
+  ci_f1_vals <- tryCatch({
+    boot_f1 <- boot(data = test, statistic = function(data, indices) {
+      d_i <- as_tibble(data[indices, ]) %>%
+        mutate(actualicumortality = factor(actualicumortality, levels = c("0", "1")))
+      probas <- predict(fitted_model, new_data = d_i, type = "prob") %>%
+        bind_cols(d_i %>% select(actualicumortality)) %>%
+        mutate(.pred_class = factor(if_else(.pred_1 >= optimal_threshold, "1", "0"), levels = c("0", "1")))
+      f_meas_vec(truth = probas$actualicumortality, estimate = probas$.pred_class)
+    }, R = 100)
+    ci_f1 <- suppressWarnings(boot.ci(boot_f1, type = "perc"))
+    if (!is.null(ci_f1$percent)) ci_f1$percent[4:5] else c(NA_real_, NA_real_)
+  }, error = function(e) {
+    message(glue::glue("⚠️ Could not compute F1 CI for {group}"))
+    c(NA_real_, NA_real_)
+  })
+  
+  cat("→ Generating SHAP...\n")
+  shap_data <- tryCatch({
+    booster_model <- extract_fit_parsnip(fitted_model)$fit
+    test_matrix <- bake(prep(recipe_obj), new_data = test) %>% select(-actualicumortality)
+    SHAPforxgboost::shap.prep(xgb_model = booster_model, X_train = as.matrix(test_matrix), top_n = 10)
+  }, error = function(e) {
+    message(glue::glue("⚠️ SHAP computation failed for {group}"))
+    NULL
+  })
+  
+  plot_title <- glue::glue("Apache group: {group}\nF1: {round(f1, 3)} CI [{round(ci_f1_vals[1], 3)}–{round(ci_f1_vals[2], 3)}]")
+  
+  p <- tryCatch({
+    if (!is.null(shap_data) && nrow(shap_data) > 0) {
+      shap.plot.summary(shap_data) + ggtitle(plot_title)
+    } else {
+      stop("Empty SHAP data")
+    }
+  }, error = function(e) {
+    ggplot(data.frame(x = 1, y = 1), aes(x, y)) +
+      geom_point(alpha = 0) +
+      annotate("text", x = 1, y = 1, label = glue::glue("{group}\nNo SHAP data"), size = 6) +
+      ggtitle(plot_title) +
+      theme_void()
+  })
+  
+  # Show plot
+  print(p)
+  
+  # Save individual PNG
+  ggsave(filename = glue::glue("shap_group_{group}.png"), plot = p, width = 8, height = 6, dpi = 300)
+  
+  cat(glue::glue("✅ Saved: shap_group_{group}.png\n"))
+}
+
+```
+>>>>>>> 15288707fcca542ba8b129af25222d7e0184fd07
 
