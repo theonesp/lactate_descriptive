@@ -190,19 +190,8 @@ f - g
 print('Final number of patients:')
 nrow(lactate_df)
 ```
-<<<<<<< HEAD
 
 ## CONSORT diagram
-
-```{r}
-# Create boxes with proper sizing
-all_icu <- boxGrob(
-  label = paste("All ICU stays\nN =", txtInt(a)),
-  x = 0.3, y = 0.85,
-  width = 0.25, height = 0.1
-)
-=======
-## Flowchart diagram
 
 ```{r}
 # Initial number of patients
@@ -229,7 +218,6 @@ excluded <- boxGrob(glue("Total Excluded (N = {tot}):",
                          gender_excluded = txtInt(f - g),
                          .sep = "\n"),
                     just = "left")
->>>>>>> 15288707fcca542ba8b129af25222d7e0184fd07
 
 excluded_1 <- boxGrob(
   label = paste("Excluded:\n< 18 yo: N =", txtInt(a - b), 
