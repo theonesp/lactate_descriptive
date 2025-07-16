@@ -1,48 +1,3 @@
----
-title: "Quantiles"
-author: "Miguel Ángel Armengol de la Hoz"
-output:
-  html_document:
-    toc: true
-    theme: united
----
-
-# Environment
-
-```{r}
-library(dplyr)
-library(ggplot2)
-```
-
-
-# Odd Ratio Plots
-
-## Histogram per Apache Group
-
-# Elevated
-
-```{r}
-lactate_df %>% filter(mins_from_first_elev_to_test<=24*60) %>% 
-filter(apache_strat != 'Not Top5') %>%
-  ggplot(aes(x = mins_from_first_elev_to_test/60)) + 
-  geom_histogram() + 
-  facet_wrap(~apache_strat)
-```
-
-# Severely  Elevated
-
-```{r}
-lactate_df %>% filter(mins_from_first_sev_elev_to_test<=24*60) %>% 
-filter(apache_strat != 'Not Top5') %>%
-  ggplot(aes(x = mins_from_first_sev_elev_to_test/60)) + 
-  geom_histogram() + 
-  facet_wrap(~apache_strat)
-```
-
-
-# apache GAM
-
-```{r}
 library(mgcv)
 library(ggplot2)
 library(dplyr)
@@ -178,6 +133,3 @@ data_summary <- train_data %>%
 print(data_summary)
 
 ggsave("./figures/lactate_mortality_gam.tiff", width = 12, height = 8, dpi = 300, compression = "lzw")
-
-```
-

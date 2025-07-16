@@ -39,19 +39,13 @@ df <- lactate_df_selected %>%
   mutate(across(where(is.character), as.factor))
 ```
 
-<<<<<<< HEAD
-=======
 ## Training the model
->>>>>>> 15288707fcca542ba8b129af25222d7e0184fd07
 
 ```{r}
 library(tidymodels)
 library(ggplot2)
 library(boot)
-<<<<<<< HEAD
-=======
 library(glue)
->>>>>>> 15288707fcca542ba8b129af25222d7e0184fd07
 
 set.seed(123)
 
@@ -71,13 +65,8 @@ modelo <- boost_tree(
   trees = 1000,
   tree_depth = 6,
   learn_rate = 0.01
-<<<<<<< HEAD
 ) %>%
   set_engine("xgboost") %>%
-=======
-) %>% 
-  set_engine("xgboost") %>% 
->>>>>>> 15288707fcca542ba8b129af25222d7e0184fd07
   set_mode("classification")
 
 # 4. Workflow y entrenamiento
@@ -199,9 +188,6 @@ shap_df <- as_tibble(shap_values)
 # 7. Show the first rows
 print(head(shap_df))
 
-```
-
-=======
 # 11. Línea final con métricas y CIs en una sola línea legible
 acc <- metricas_optimas %>% filter(.metric == "accuracy") %>% pull(.estimate)
 prec <- metricas_optimas %>% filter(.metric == "precision") %>% pull(.estimate)
@@ -356,5 +342,4 @@ for (group in groups) {
 }
 
 ```
->>>>>>> 15288707fcca542ba8b129af25222d7e0184fd07
 

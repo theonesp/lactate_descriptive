@@ -295,10 +295,14 @@ lactate_df_selected<-lactate_df%>%
 ```
 
 
-# Variables Casting
+# Casting Variables
 
 ```{r}
 lactate_df_selected$teachingstatus <- as.integer(lactate_df_selected$teachingstatus)
+
+# factors
+lactate_df_selected %<>%
+  mutate(across(c(lactate_bin_first3days, lactateredrawn_wt8hrs_bin_first3days, actualicumortality), factor) )
 ```
 
 
@@ -307,12 +311,6 @@ lactate_df_selected$teachingstatus <- as.integer(lactate_df_selected$teachingsta
 ## Overall variables
 
 ```{r}
-# proper data type
-lactate_df_selected %<>%
-  mutate(across(c(lactate_bin_first3days, lactateredrawn_wt8hrs_bin_first3days, actualicumortality), factor) )
-
-library(dplyr)
-
 # Supongamos que tu dataframe se llama 'lactate_df_selected'
 lactate_df_selected <- lactate_df_selected %>%
   mutate(actualicumortality = recode_factor(actualicumortality, "ALIVE" = 0, "EXPIRED" = 1))

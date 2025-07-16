@@ -16,6 +16,7 @@ library(knitr)
 library(kableExtra)
 library(flextable)
 library(officer)
+library(tidyr)
 
 # ============================================================================
 # HELPER FUNCTION TO CHECK VARIABLE EXISTENCE
@@ -42,69 +43,78 @@ check_variables_exist <- function(vars, dataset_name = "lactate_df_selected") {
 
 ```
 
-# Table 1 
-
-## Stratified by top apache groups & lactate_max_first3days_type
+# Table 1: Descriptive Data Stratified by Apache Group
 
 ```{r}
-
 # ============================================================================
 # TABLE 1: DESCRIPTIVE DATA STRATIFIED BY APACHE GROUP
 # ============================================================================
 
 create_table1 <- function() {
-  
-  # Define variables for Table 1 (core descriptive variables)
-  vars_in_table1 <- c("age_fixed", "sex", "unabridgedunitlos", "unabridgedhosplos", 
-                      "apache_iv", "final_charlson_score", "sofatotal_day1", 
-                      "actualicumortality", "region", "teachingstatus")
-  
-  # Check which variables exist
-  vars_in_table1 <- check_variables_exist(vars_in_table1)
-  
-  # Create Table 1 dataset
-  table1_dataset <- lactate_df_selected[, c(vars_in_table1, "apache_strat")]
-  stratifyby <- c('apache_strat')
-  
-  # Set variable labels
-  if ("age_fixed" %in% vars_in_table1) attr(table1_dataset$age_fixed, 'label') <- 'Age (mean ± SD)'
-  if ("sex" %in% vars_in_table1) attr(table1_dataset$sex, 'label') <- 'Sex - Male (%)'
-  if ("unabridgedunitlos" %in% vars_in_table1) attr(table1_dataset$unabridgedunitlos, 'label') <- 'ICU Length of Stay [Hours] (mean ± SD)'
-  if ("unabridgedhosplos" %in% vars_in_table1) attr(table1_dataset$unabridgedhosplos, 'label') <- 'Hospital Length of Stay (mean ± SD)'
-  if ("apache_iv" %in% vars_in_table1) attr(table1_dataset$apache_iv, 'label') <- 'Apache Score (mean ± SD)'
-  if ("final_charlson_score" %in% vars_in_table1) attr(table1_dataset$final_charlson_score, 'label') <- 'Charlson Comorbidity Index (mean ± SD)'
-  if ("sofatotal_day1" %in% vars_in_table1) attr(table1_dataset$sofatotal_day1, 'label') <- 'SOFA on Day 1 (mean ± SD)'
-  if ("actualicumortality" %in% vars_in_table1) attr(table1_dataset$actualicumortality, 'label') <- 'ICU Mortality - n (%)'
-  if ("region" %in% vars_in_table1) attr(table1_dataset$region, 'label') <- 'Hospital Region (%)'
-  if ("teachingstatus" %in% vars_in_table1) attr(table1_dataset$teachingstatus, 'label') <- 'Academic vs Not (%)'
-  
-  # Detect categorical variables automatically
-  cat_variables <- c()
-  for (var in vars_in_table1) {
-    if (n_distinct(table1_dataset[[var]], na.rm = TRUE) <= 10) {
-      cat_variables <- c(cat_variables, var)
-    }
-  }
-  
-  # Create Table 1
-  table1_base <- print(CreateTableOne(vars = vars_in_table1,
-                                      strata = stratifyby,
-                                      includeNA = TRUE,
-                                      factorVars = cat_variables,
-                                      data = table1_dataset, 
-                                      addOverall = TRUE),
-                       varLabels = TRUE,
-                       nonnormal = c('unabridgedunitlos', 'unabridgedhosplos'))
-  
-  return(table1_base)
+ 
+ # Define variables for Table 1 (core descriptive variables)
+ vars_in_table1 <- c("age_fixed", "sex", "unabridgedunitlos", "unabridgedhosplos", 
+                     "apache_iv", "final_charlson_score", "sofatotal_day1", 
+                     "actualicumortality", "region", "teachingstatus")
+ 
+ # Check which variables exist
+ vars_in_table1 <- check_variables_exist(vars_in_table1)
+ 
+ # Create Table 1 dataset
+ table1_dataset <- lactate_df_selected[, c(vars_in_table1, "apache_strat")]
+ stratifyby <- c('apache_strat')
+ 
+ # Set variable labels
+ if ("age_fixed" %in% vars_in_table1) attr(table1_dataset$age_fixed, 'label') <- 'Age'
+ if ("sex" %in% vars_in_table1) attr(table1_dataset$sex, 'label') <- 'Sex - Male (%)'
+ if ("unabridgedunitlos" %in% vars_in_table1) attr(table1_dataset$unabridgedunitlos, 'label') <- 'ICU Length of Stay [Days]'
+ if ("unabridgedhosplos" %in% vars_in_table1) attr(table1_dataset$unabridgedhosplos, 'label') <- 'Hospital Length of Stay [Days]'
+ if ("apache_iv" %in% vars_in_table1) attr(table1_dataset$apache_iv, 'label') <- 'Apache Score '
+ if ("final_charlson_score" %in% vars_in_table1) attr(table1_dataset$final_charlson_score, 'label') <- 'Charlson Comorbidity Index'
+ if ("sofatotal_day1" %in% vars_in_table1) attr(table1_dataset$sofatotal_day1, 'label') <- 'SOFA on Day 1'
+ if ("actualicumortality" %in% vars_in_table1) attr(table1_dataset$actualicumortality, 'label') <- 'ICU Mortality - n (%)'
+ if ("region" %in% vars_in_table1) attr(table1_dataset$region, 'label') <- 'Hospital Region (%)'
+ if ("teachingstatus" %in% vars_in_table1) attr(table1_dataset$teachingstatus, 'label') <- 'Academic vs Not (%)'
+ 
+ # Detect categorical variables automatically
+ cat_variables <- c()
+ for (var in vars_in_table1) {
+   if (n_distinct(table1_dataset[[var]], na.rm = TRUE) <= 10) {
+     cat_variables <- c(cat_variables, var)
+   }
+ }
+ 
+ # Create Table 1
+ table1_base <- print(CreateTableOne(vars = vars_in_table1,
+                                     strata = stratifyby,
+                                     includeNA = TRUE,
+                                     factorVars = cat_variables,
+                                     data = table1_dataset, 
+                                     addOverall = TRUE),
+                      varLabels = TRUE
+                      )
+ 
+ return(table1_base)
 }
+
+# Create tables directory if it doesn't exist
+if (!dir.exists("./tables")) {
+ dir.create("./tables", recursive = TRUE)
+}
+
+# Create Table 1
+cat("Creating Table 1: Descriptive Data Stratified by Apache Group\n")
+table1_result <- create_table1()
+
+# Export Table 1 to Word
+export_table_to_word(table1_result, 
+                    "./tables/Table1_Descriptive_Apache_Groups.docx",
+                    "Table 1: Descriptive Data Stratified by Apache Group")
 ```
 
-# Table 2: Mortality strat for lactate type and apache
+# Table 2: Lactate Data Stratified by Apache Group
 
 ```{r}
-
-
 # ============================================================================
 # TABLE 2: LACTATE DATA STRATIFIED BY APACHE GROUP  
 # ============================================================================
@@ -163,17 +173,27 @@ create_table2 <- function() {
                                       factorVars = cat_variables,
                                       data = table2_dataset, 
                                       addOverall = TRUE),
-                       varLabels = TRUE,
-                       nonnormal = vars_in_table2[!vars_in_table2 %in% cat_variables])
+                       varLabels = TRUE
+                       )
   
   return(table2_base)
 }
+
+# Create Table 2
+cat("\nCreating Table 2: Lactate Data Stratified by Apache Group\n")
+table2_result <- create_table2()
+
+# Export Table 2 to Word
+export_table_to_word(table2_result, 
+                     "./tables/Table2_Lactate_Apache_Groups.docx", 
+                     "Table 2: Lactate Data Stratified by Apache Group")
 ```
 
-# Sup Table
+
+
+# Supplemental Table: Additional Variables
 
 ```{r}
-
 # ============================================================================
 # SUPPLEMENTAL TABLE: REMAINING VARIABLES
 # ============================================================================
@@ -218,125 +238,213 @@ create_supplemental_table <- function() {
   return(supplemental_base)
 }
 
-# ============================================================================
-# FIXED FUNCTION TO FORMAT AND DISPLAY TABLES WITH KABLEEXTRA
-# ============================================================================
-
-format_and_display_table <- function(table_data, title, header_text = "Apache Groups") {
-  
-  # Convert to dataframe if it's not already
-  if (!is.data.frame(table_data)) {
-    table_data <- as.data.frame(table_data)
-  }
-  
-  # Get number of columns for header (subtract 1 for the variable names column)
-  total_cols <- ncol(table_data)
-  
-  # Create the header structure: 1 column for variable names, rest for apache groups
-  header_structure <- c(" " = 1, header_text = total_cols - 1)
-  
-  formatted_table <- table_data %>%
-    kbl(caption = title, align = "c") %>%
-    kable_classic_2(full_width = FALSE, html_font = "Cambria") %>%
-    add_header_above(header_structure)
-  
-  return(formatted_table)
-}
-
-# ============================================================================
-# FUNCTION TO EXPORT TABLEONE RESULT TO WORD
-# ============================================================================
-
-export_table_to_word <- function(table_result, filename, title) {
-  
-  if (is.null(table_result)) {
-    cat("Skipping", filename, "- table result is NULL\n")
-    return()
-  }
-  
-  # Convert tableone result to dataframe
-  table_df <- as.data.frame(table_result)
-  table_df$Variable <- rownames(table_df)
-  table_df <- table_df[, c("Variable", setdiff(names(table_df), "Variable"))]
-  
-  # Create flextable
-  ft <- flextable(table_df) %>%
-    set_caption(title) %>%
-    theme_vanilla() %>%
-    autofit() %>%
-    align(align = "center", part = "all") %>%
-    align(j = 1, align = "left", part = "all") %>%
-    bold(part = "header") %>%
-    fontsize(size = 10, part = "all") %>%
-    fontsize(size = 11, part = "header")
-  
-  # Create Word document
-  doc <- read_docx() %>%
-    body_add_flextable(ft)
-  
-  # Save to file
-  print(doc, target = filename)
-  cat("Exported:", filename, "\n")
-}
-
-# ============================================================================
-# MAIN EXECUTION
-# ============================================================================
-
-# Create tables directory if it doesn't exist
-if (!dir.exists("./tables")) {
-  dir.create("./tables", recursive = TRUE)
-}
-
-# Create the three tables
-cat("Creating Table 1: Descriptive Data Stratified by Apache Group\n")
-table1_result <- create_table1()
-
-cat("\nCreating Table 2: Lactate Data Stratified by Apache Group\n")
-table2_result <- create_table2()
-
+# Create Supplemental Table
 cat("\nCreating Supplemental Table: Additional Variables\n")
 supplemental_result <- create_supplemental_table()
 
-# Skip display and go directly to Word export
-cat("\n=== EXPORTING TABLES TO WORD ===\n")
-
-# Export tables to Word
-export_table_to_word(table1_result, 
-                     "./tables/Table1_Descriptive_Apache_Groups.docx",
-                     "Table 1: Descriptive Data Stratified by Apache Group")
-
-export_table_to_word(table2_result, 
-                     "./tables/Table2_Lactate_Apache_Groups.docx", 
-                     "Table 2: Lactate Data Stratified by Apache Group")
-
+# Export Supplemental Table to Word
 export_table_to_word(supplemental_result, 
                      "./tables/Supplemental_Table_Apache_Groups.docx",
                      "Supplemental Table: Additional Variables Stratified by Apache Group")
 
 cat("\nAll available tables exported to Word documents in ./tables/ directory!")
 
+```
+# Table 3: Lactate Utilization by Academic vs Non-Academic Centers Stratified by Disease State
+
+```{r}
 # ============================================================================
-# DIAGNOSTIC: SHOW AVAILABLE LACTATE VARIABLES
+# TABLE 3: LACTATE UTILIZATION BY ACADEMIC VS NON-ACADEMIC CENTERS
 # ============================================================================
 
-cat("\n=== DIAGNOSTIC INFORMATION ===\n")
-cat("Available columns in your dataset:\n")
-available_cols <- names(lactate_df_selected)
-lactate_related <- available_cols[grep("lactate|lact", available_cols, ignore.case = TRUE)]
-cat("Lactate-related columns found:", paste(lactate_related, collapse = ", "), "\n")
-
-cat("\nAll column names containing key terms:\n")
-key_terms <- c("apache", "age", "sex", "los", "charlson", "sofa", "mortality", "region", "teaching", "unit", "admit")
-for (term in key_terms) {
-  matching_cols <- available_cols[grep(term, available_cols, ignore.case = TRUE)]
-  if (length(matching_cols) > 0) {
-    cat(paste0(term, ": "), paste(matching_cols, collapse = ", "), "\n")
-  }
+create_table3 <- function() {
+  
+  # Create a dataset with the required variables
+  table3_dataset <- lactate_df_selected[, c("lactate_bin_first3days", "apache_strat", "teachingstatus")]
+  
+  # Convert teachingstatus to meaningful labels
+  table3_dataset$academic_status <- ifelse(table3_dataset$teachingstatus == 1, "Academic", "Non-academic")
+  
+  # Create a combined stratification variable
+  table3_dataset$strata_combined <- paste(table3_dataset$apache_strat, table3_dataset$academic_status, sep = " - ")
+  
+  # Set variable label
+  attr(table3_dataset$lactate_bin_first3days, 'label') <- 'Lactate utilization within first 3 days of hospitalization - n (%)'
+  
+  # Create Table 3 - stratified by apache group AND academic status
+  table3_base <- print(CreateTableOne(vars = "lactate_bin_first3days",
+                                      strata = c("apache_strat", "academic_status"),
+                                      includeNA = FALSE,
+                                      factorVars = "lactate_bin_first3days",
+                                      data = table3_dataset, 
+                                      addOverall = TRUE),
+                       varLabels = TRUE)
+  
+  return(table3_base)
 }
 
-```
+# Alternative approach for a more structured cross-tabulation
+create_table3_crosstab <- function() {
+  
+  # Create the dataset
+  table3_data <- lactate_df_selected %>%
+    mutate(
+      academic_status = case_when(
+        teachingstatus == 1 ~ "Academic",
+        teachingstatus == 0 ~ "Non-academic",
+        TRUE ~ "Unknown"
+      ),
+      lactate_used = case_when(
+        lactate_bin_first3days == "1" ~ "Yes",
+        lactate_bin_first3days == "0" ~ "No",
+        TRUE ~ "Unknown"
+      )
+    )
+  
+  # Create cross-tabulation
+  crosstab_result <- table3_data %>%
+    filter(!is.na(apache_strat) & !is.na(academic_status) & lactate_used != "Unknown") %>%
+    group_by(apache_strat, academic_status, lactate_used) %>%
+    summarise(n = n(), .groups = "drop") %>%
+    group_by(apache_strat, academic_status) %>%
+    mutate(
+      total = sum(n),
+      percentage = round((n/total) * 100, 1)
+    ) %>%
+    filter(lactate_used == "Yes") %>%
+    select(apache_strat, academic_status, n, total, percentage) %>%
+    mutate(result = paste0(n, " (", percentage, "%)"))
+  
+  # Reshape to wide format
+  table3_wide <- crosstab_result %>%
+    select(apache_strat, academic_status, result) %>%
+    pivot_wider(names_from = academic_status, values_from = result, values_fill = "0 (0.0%)")
+  
+  return(table3_wide)
+}
 
+# Create Table 3
+cat("\nCreating Table 3: Lactate Utilization by Academic vs Non-Academic Centers\n")
+table3_result <- create_table3()
+
+# Also create the cross-tabulation version
+table3_crosstab_result <- create_table3_crosstab()
+
+# Export Table 3 to Word
+export_table_to_word(table3_result, 
+                     "./tables/Table3_Lactate_Academic_Status.docx",
+                     "Table 3: Lactate Utilization by Academic vs Non-Academic Centers Stratified by Disease State")
+
+# Export cross-tabulation version as well
+if (!is.null(table3_crosstab_result)) {
+  # Convert to format suitable for export_table_to_word
+  table3_crosstab_df <- as.data.frame(table3_crosstab_result)
+  rownames(table3_crosstab_df) <- table3_crosstab_df$apache_strat
+  table3_crosstab_df <- table3_crosstab_df[, -1]  # Remove apache_strat column since it's now rownames
+  
+  export_table_to_word(table3_crosstab_df, 
+                       "./tables/Table3_Lactate_Academic_Crosstab.docx",
+                       "Table 3: Lactate Utilization - Academic vs Non-Academic (Cross-tabulation)")
+}
+
+cat("Table 3 exported successfully!\n")
+```
+# Table 4: ICU Mortality Based on Maximum Lactate in First 3 Days Across Different Disease States
+
+```{r}
+# ============================================================================
+# TABLE 4: ICU MORTALITY BY MAXIMUM LACTATE IN FIRST 3 DAYS
+# ============================================================================
+
+create_table4 <- function() {
+  
+  # Create a dataset with the required variables
+  table4_dataset <- lactate_df_selected[, c("actualicumortality", "lactate_max_first3days_type", "apache_strat")]
+  
+  # Clean the lactate categories if needed
+  table4_dataset$lactate_category <- table4_dataset$lactate_max_first3days_type
+  
+  # Set variable label
+  attr(table4_dataset$actualicumortality, 'label') <- 'ICU Mortality - n (%)'
+  
+  # Create Table 4 - stratified by apache group AND lactate category
+  table4_base <- print(CreateTableOne(vars = "actualicumortality",
+                                      strata = c("apache_strat", "lactate_category"),
+                                      includeNA = FALSE,
+                                      factorVars = "actualicumortality",
+                                      data = table4_dataset, 
+                                      addOverall = TRUE),
+                       varLabels = TRUE)
+  
+  return(table4_base)
+}
+
+# Alternative approach for cross-tabulation format
+create_table4_crosstab <- function() {
+  
+  # Create the dataset
+  table4_data <- lactate_df_selected
+  table4_data$mortality <- ifelse(table4_data$actualicumortality == "1", "Yes", "No")
+  
+  # Clean lactate categories
+  table4_data$lactate_category <- table4_data$lactate_max_first3days_type
+  
+  # Remove missing data
+  table4_clean <- table4_data[!is.na(table4_data$apache_strat) & 
+                              !is.na(table4_data$lactate_category) & 
+                              !is.na(table4_data$mortality), ]
+  
+  # Calculate mortality percentages for each combination
+  crosstab_result <- table4_clean %>%
+    group_by(apache_strat, lactate_category, mortality) %>%
+    summarise(n = n(), .groups = "drop") %>%
+    group_by(apache_strat, lactate_category) %>%
+    mutate(
+      total = sum(n),
+      percentage = round((n/total) * 100, 1)
+    ) %>%
+    filter(mortality == "Yes") %>%
+    select(apache_strat, lactate_category, n, total, percentage) %>%
+    mutate(result = paste0(n, " (", percentage, "%)"))
+  
+  # Reshape to wide format
+  table4_wide <- crosstab_result %>%
+    select(apache_strat, lactate_category, result) %>%
+    pivot_wider(names_from = lactate_category, values_from = result, values_fill = "0 (0.0%)")
+  
+  return(table4_wide)
+}
+
+# Check what lactate categories we have available
+cat("Available lactate categories in lactate_max_first3days_type:\n")
+print(table(lactate_df_selected$lactate_max_first3days_type, useNA = "ifany"))
+
+# Create Table 4
+cat("\nCreating Table 4: ICU Mortality by Maximum Lactate in First 3 Days\n")
+table4_result <- create_table4()
+
+# Also create the cross-tabulation version
+table4_crosstab_result <- create_table4_crosstab()
+
+# Export Table 4 to Word
+export_table_to_word(table4_result, 
+                     "./tables/Table4_Mortality_Lactate_Categories.docx",
+                     "Table 4: ICU Mortality Based on Maximum Lactate in First 3 Days Across Different Disease States")
+
+# Export cross-tabulation version as well
+if (!is.null(table4_crosstab_result)) {
+  # Convert to format suitable for export_table_to_word
+  table4_crosstab_df <- as.data.frame(table4_crosstab_result)
+  rownames(table4_crosstab_df) <- table4_crosstab_df$apache_strat
+  table4_crosstab_df <- table4_crosstab_df[, -1]  # Remove apache_strat column since it's now rownames
+  
+  export_table_to_word(table4_crosstab_df, 
+                       "./tables/Table4_Mortality_Lactate_Crosstab.docx",
+                       "Table 4: ICU Mortality by Lactate Categories (Cross-tabulation)")
+}
+
+cat("Table 4 exported successfully!\n")
+```
 
 # Deprecated
 
